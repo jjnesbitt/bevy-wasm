@@ -1,6 +1,8 @@
 //! A simplified implementation of the classic game "Breakout".
 
 use std::ops::{Add, Mul};
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
 
 use bevy::{
     input::gamepad::{GamepadButtonInput, GamepadEvent},
@@ -9,6 +11,7 @@ use bevy::{
     sprite::MaterialMesh2dBundle,
 };
 use web_sys;
+use web_sys::{Request, RequestInit, RequestMode, Response};
 
 // These constants are defined in `Transform` units.
 // Using the default 2D camera they correspond 1:1 with screen pixels.
@@ -27,6 +30,28 @@ const TOP_WALL: f32 = 300.;
 const BACKGROUND_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
 const PLAYER_COLOR: Color = Color::rgb(0.3, 0.3, 0.7);
 const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
+
+#[wasm_bindgen]
+pub async fn myfunc() -> Result<JsValue, JsValue> {
+    let mut opts = RequestInit::new();
+    opts.method("GET");
+    opts.mode(RequestMode::Cors);
+
+    let url = "http://localhost:3000";
+    let request = Request::new_with_str_and_init(&url, &opts)?;
+    let window = web_sys::window().unwrap();
+    let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
+
+    // `resp_value` is a `Response` object.
+    assert!(resp_value.is_instance_of::<Response>());
+    let resp: Response = resp_value.dyn_into().unwrap();
+
+    // Convert this other `Promise` into a rust `Future`.
+    let json = JsFuture::from(resp.json()?).await?;
+
+    // Send the JSON response back to JS.
+    Ok(json)
+}
 
 fn main() {
     App::new()
