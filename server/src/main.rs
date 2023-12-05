@@ -1,43 +1,62 @@
-use std::convert::Infallible;
-use std::net::SocketAddr;
+// use std::convert::Infallible;
+// use std::net::SocketAddr;
 
-use http_body_util::Full;
-use hyper::body::Bytes;
-use hyper::server::conn::http1;
-use hyper::service::service_fn;
-use hyper::{Request, Response};
-use hyper_util::rt::TokioIo;
-use tokio::net::TcpListener;
+// use http_body_util::Full;
+// use hyper::body::Bytes;
+// use hyper::server::conn::http1;
+// use hyper::service::service_fn;
+// use hyper::{Request, Response};
+// use hyper_util::rt::TokioIo;
+// use tokio::net::TcpListener;
 
-async fn hello(_: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-    Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
-}
+// async fn hello(_: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+//     Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
+// }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+// #[tokio::main]
+// async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
-    // We create a TcpListener and bind it to 127.0.0.1:3000
-    let listener = TcpListener::bind(addr).await?;
+//     // We create a TcpListener and bind it to 127.0.0.1:3000
+//     let listener = TcpListener::bind(addr).await?;
 
-    // We start a loop to continuously accept incoming connections
-    loop {
-        let (stream, _) = listener.accept().await?;
+//     // We start a loop to continuously accept incoming connections
+//     loop {
+//         let (stream, _) = listener.accept().await?;
 
-        // Use an adapter to access something implementing `tokio::io` traits as if they implement
-        // `hyper::rt` IO traits.
-        let io = TokioIo::new(stream);
+//         // Use an adapter to access something implementing `tokio::io` traits as if they implement
+//         // `hyper::rt` IO traits.
+//         let io = TokioIo::new(stream);
 
-        // Spawn a tokio task to serve multiple connections concurrently
-        tokio::task::spawn(async move {
-            // Finally, we bind the incoming connection to our `hello` service
-            if let Err(err) = http1::Builder::new()
-                // `service_fn` converts our function in a `Service`
-                .serve_connection(io, service_fn(hello))
-                .await
-            {
-                println!("Error serving connection: {:?}", err);
-            }
-        });
+//         // Spawn a tokio task to serve multiple connections concurrently
+//         tokio::task::spawn(async move {
+//             // Finally, we bind the incoming connection to our `hello` service
+//             if let Err(err) = http1::Builder::new()
+//                 // `service_fn` converts our function in a `Service`
+//                 .serve_connection(io, service_fn(hello))
+//                 .await
+//             {
+//                 println!("Error serving connection: {:?}", err);
+//             }
+//         });
+//     }
+// }
+
+use ws::listen;
+
+fn main() {
+    // Listen on an address and call the closure for each connection
+    if let Err(error) = listen("127.0.0.1:3000", |out| {
+        // The handler needs to take ownership of out, so we use move
+        move |msg| {
+            // Handle messages received on this connection
+            println!("Server got message '{}'. ", msg);
+
+            // Use the out channel to send messages back
+            out.send(msg)
+        }
+    }) {
+        // Inform the user of failure
+        println!("Failed to create WebSocket due to {:?}", error);
     }
 }

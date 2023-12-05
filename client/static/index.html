@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Hello World - Rust</title>
+    <script type="module">
+        import init from "./client.js";
+        try {
+            await init("client_bg.wasm");
+        } catch (error) {
+            console.error(error);
+        }
+
+        console.log("ASDASDASD");
+        const exampleSocket = new WebSocket("ws://localhost:3000");
+        exampleSocket.onopen = (event) => {
+            console.log("OPEN");
+            exampleSocket.send("Here's some text that the server is urgently awaiting!");
+        };
+    </script>
+</head>
+
+<body></body>
+
+</html>
