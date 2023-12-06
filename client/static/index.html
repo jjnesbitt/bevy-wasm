@@ -22,10 +22,13 @@
             exampleSocket.send(`MESSAGE! ${Math.random()}`);
         }
 
+        const genRanHex = size => [...Array(size)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
         exampleSocket.onopen = (event) => {
-            console.log("OPEN");
-            exampleSocket.send("Here's some text that the server is urgently awaiting!");
-            setInterval(() => sendMessage("asd"), 100);
+            // First thing to do is to send this client's UUID
+            exampleSocket.send(genRanHex(8));
+
+            // TODO: Get player position from wasm and send
+            // setInterval(() => sendMessage("asd"), 100);
         };
     </script>
 </head>

@@ -31,27 +31,10 @@ const BACKGROUND_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
 const PLAYER_COLOR: Color = Color::rgb(0.3, 0.3, 0.7);
 const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
 
-#[wasm_bindgen]
-pub async fn myfunc() -> Result<JsValue, JsValue> {
-    let mut opts = RequestInit::new();
-    opts.method("GET");
-    opts.mode(RequestMode::Cors);
-
-    let url = "http://localhost:3000";
-    let request = Request::new_with_str_and_init(&url, &opts)?;
-    let window = web_sys::window().unwrap();
-    let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
-
-    // `resp_value` is a `Response` object.
-    assert!(resp_value.is_instance_of::<Response>());
-    let resp: Response = resp_value.dyn_into().unwrap();
-
-    // Convert this other `Promise` into a rust `Future`.
-    let json = JsFuture::from(resp.json()?).await?;
-
-    // Send the JSON response back to JS.
-    Ok(json)
-}
+// #[wasm_bindgen]
+// pub fn get_player_pos() {
+//     //
+// }
 
 fn main() {
     App::new()
@@ -67,6 +50,7 @@ fn main() {
             (
                 apply_velocity,
                 move_player,
+                send_player_position,
                 check_for_wall_collisions,
                 check_for_ball_collisions,
             )
@@ -361,6 +345,13 @@ fn move_player(
         player_transform.translation.x + x_direction * PLAYER_SPEED * time.delta_seconds();
     player_transform.translation.y =
         player_transform.translation.y + y_direction * PLAYER_SPEED * time.delta_seconds();
+}
+
+fn send_player_position(query: Query<&Transform, With<Player>>) {
+    let player_transform = query.single();
+    let Vec2 { x, y } = player_transform.translation.xy();
+
+    // TODO: Send x and y off
 }
 
 fn check_for_ball_collisions(
