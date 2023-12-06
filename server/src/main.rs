@@ -1,62 +1,221 @@
-// use std::convert::Infallible;
-// use std::net::SocketAddr;
+use futures::sink::SinkExt;
+use futures::stream::StreamExt;
+use http_body_util::Full;
+use hyper::body::{Bytes as HyperBytes, Incoming};
+use hyper::service::Service;
+use hyper::{body::Incoming as IncomingBody, Request, Response};
+use hyper_tungstenite::{tungstenite, HyperWebsocket};
+use hyper_util::rt::TokioIo;
+use tungstenite::Message;
+// type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
-// use http_body_util::Full;
-// use hyper::body::Bytes;
-// use hyper::server::conn::http1;
-// use hyper::service::service_fn;
-// use hyper::{Request, Response};
-// use hyper_util::rt::TokioIo;
-// use tokio::net::TcpListener;
+type SendSyncError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
-// async fn hello(_: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-//     Ok(Response::new(Full::new(Bytes::from("Hello, World!"))))
-// }
+use bytes::Bytes;
+use rand::distributions::{Alphanumeric, DistString};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
-// #[tokio::main]
-// async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+use std::future::Future;
+use std::pin::Pin;
 
-//     // We create a TcpListener and bind it to 127.0.0.1:3000
-//     let listener = TcpListener::bind(addr).await?;
+// type GameServiceState = Arc<Mutex<HashMap<String, String>>>;
+type GameServiceState = Arc<Mutex<u128>>;
 
-//     // We start a loop to continuously accept incoming connections
-//     loop {
-//         let (stream, _) = listener.accept().await?;
-
-//         // Use an adapter to access something implementing `tokio::io` traits as if they implement
-//         // `hyper::rt` IO traits.
-//         let io = TokioIo::new(stream);
-
-//         // Spawn a tokio task to serve multiple connections concurrently
-//         tokio::task::spawn(async move {
-//             // Finally, we bind the incoming connection to our `hello` service
-//             if let Err(err) = http1::Builder::new()
-//                 // `service_fn` converts our function in a `Service`
-//                 .serve_connection(io, service_fn(hello))
-//                 .await
-//             {
-//                 println!("Error serving connection: {:?}", err);
+#[derive(Clone)]
+struct GameService {
+    state: GameServiceState,
+    name: String,
+}
+// impl GameService {
+//     async fn serve_websocket(&self, websocket: HyperWebsocket) -> Result<(), SendSyncError> {
+//         let mut websocket = websocket.await?;
+//         while let Some(message) = websocket.next().await {
+//             match message? {
+//                 Message::Text(msg) => {
+//                     println!("Received text message: {msg}");
+//                     websocket
+//                         .send(Message::text("Thank you, come again."))
+//                         .await?;
+//                 }
+//                 Message::Binary(msg) => {
+//                     println!("Received binary message: {msg:02X?}");
+//                     websocket
+//                         .send(Message::binary(b"Thank you, come again.".to_vec()))
+//                         .await?;
+//                 }
+//                 Message::Ping(msg) => {
+//                     // No need to send a reply: tungstenite takes care of this for you.
+//                     println!("Received ping message: {msg:02X?}");
+//                 }
+//                 Message::Pong(msg) => {
+//                     println!("Received pong message: {msg:02X?}");
+//                 }
+//                 Message::Close(msg) => {
+//                     // No need to send a reply: tungstenite takes care of this for you.
+//                     if let Some(msg) = &msg {
+//                         println!(
+//                             "Received close message with code {} and message: {}",
+//                             msg.code, msg.reason
+//                         );
+//                     } else {
+//                         println!("Received close message");
+//                     }
+//                 }
+//                 Message::Frame(_msg) => {
+//                     unreachable!();
+//                 }
 //             }
-//         });
+//         }
+
+//         Ok(())
 //     }
 // }
+impl Service<Request<IncomingBody>> for GameService {
+    type Response = Response<Full<HyperBytes>>;
+    type Error = hyper::Error;
+    // type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    fn call(&self, mut request: Request<IncomingBody>) -> Self::Future {
+        // Check if the request is a websocket upgrade request.
+        if hyper_tungstenite::is_upgrade_request(&request) {
+            let Ok((response, websocket)) = hyper_tungstenite::upgrade(&mut request, None) else {
+                eprintln!("Error upgrading connection!");
+                return Box::pin(async {
+                    Ok(
+                        Response::builder()
+                            .status(400)
+                            .body(Full::<HyperBytes>::from("Couldn't upgrade connection to websocket"))
+                            .unwrap()
+                    )
+                });
+            };
 
-use ws::listen;
+            // let mut state = self.state.lock().expect("lock poisoned");
+            // (*state).insert(String::from("asda"), String::from("asda"));
 
-fn main() {
-    // Listen on an address and call the closure for each connection
-    if let Err(error) = listen("127.0.0.1:3000", |out| {
-        // The handler needs to take ownership of out, so we use move
-        move |msg| {
-            // Handle messages received on this connection
-            println!("Server got message '{}'. ", msg);
+            // Spawn a task to handle the websocket connection.
+            let state = Arc::clone(&self.state);
+            let name = self.name.clone();
+            tokio::spawn(async move {
+                if let Err(e) = serve_websocket(state, name, websocket).await {
+                    eprintln!("Error in websocket connection: {e}");
+                }
+            });
 
-            // Use the out channel to send messages back
-            out.send(msg)
+            // Return the response so the spawned future can continue.
+            return Box::pin(async { Ok(response) });
         }
-    }) {
-        // Inform the user of failure
-        println!("Failed to create WebSocket due to {:?}", error);
+
+        // Handle regular HTTP requests here.
+        Box::pin(async { Ok(Response::new(Full::<HyperBytes>::from("Hello HTTP!"))) })
+    }
+}
+
+/// Handle a websocket connection.
+async fn serve_websocket(
+    state: GameServiceState,
+    name: String,
+    websocket: HyperWebsocket,
+) -> Result<(), SendSyncError> {
+    let mut websocket = websocket.await?;
+    while let Some(message) = websocket.next().await {
+        match message? {
+            Message::Text(msg) => {
+                println!("Received text message: {msg}");
+
+                // use scope so that lock is not held before await
+                {
+                    let mut state = state.lock().expect("lock poisoned");
+                    *state += 1;
+                    println!("COUNTER IS AT {:?}. Name: {:?}", *state, name);
+                }
+
+                websocket
+                    .send(Message::text("Thank you, come again."))
+                    .await?;
+            }
+            Message::Binary(msg) => {
+                println!("Received binary message: {msg:02X?}");
+                websocket
+                    .send(Message::binary(b"Thank you, come again.".to_vec()))
+                    .await?;
+            }
+            Message::Ping(msg) => {
+                // No need to send a reply: tungstenite takes care of this for you.
+                println!("Received ping message: {msg:02X?}");
+            }
+            Message::Pong(msg) => {
+                println!("Received pong message: {msg:02X?}");
+            }
+            Message::Close(msg) => {
+                // No need to send a reply: tungstenite takes care of this for you.
+                if let Some(msg) = &msg {
+                    println!(
+                        "Received close message with code {} and message: {}",
+                        msg.code, msg.reason
+                    );
+                } else {
+                    println!("Received close message");
+                }
+            }
+            Message::Frame(_msg) => {
+                unreachable!();
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// /// Handle a HTTP or WebSocket request.
+// async fn handle_request(
+//     mut request: Request<Incoming>,
+// ) -> Result<Response<Full<HyperBytes>>, Error> {
+//     // Check if the request is a websocket upgrade request.
+//     if hyper_tungstenite::is_upgrade_request(&request) {
+//         let (response, websocket) = hyper_tungstenite::upgrade(&mut request, None)?;
+
+//         // Spawn a task to handle the websocket connection.
+//         tokio::spawn(async move {
+//             if let Err(e) = serve_websocket(websocket).await {
+//                 eprintln!("Error in websocket connection: {e}");
+//             }
+//         });
+
+//         // Return the response so the spawned future can continue.
+//         return Ok(response);
+//     }
+
+//     // Handle regular HTTP requests here.
+//     Ok(Response::new(Full::<HyperBytes>::from("Hello HTTP!")))
+// }
+
+#[tokio::main]
+async fn main() -> Result<(), SendSyncError> {
+    let addr: std::net::SocketAddr = "[::1]:3000".parse()?;
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    println!("Listening on http://{addr}");
+
+    let mut http = hyper::server::conn::http1::Builder::new();
+    http.keep_alive(true);
+
+    let state = Arc::new(Mutex::new(0));
+    loop {
+        let (stream, _) = listener.accept().await?;
+        let connection = http
+            .serve_connection(
+                TokioIo::new(stream),
+                GameService {
+                    state: state.clone(),
+                    name: Alphanumeric.sample_string(&mut rand::thread_rng(), 16),
+                },
+            )
+            .with_upgrades();
+        tokio::spawn(async move {
+            if let Err(err) = connection.await {
+                println!("Error serving HTTP connection: {err:?}");
+            }
+        });
     }
 }

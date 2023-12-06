@@ -6,17 +6,26 @@
     <title>Hello World - Rust</title>
     <script type="module">
         import init from "./client.js";
+
+        // This is necessary since a fake error is always thrown
         try {
             await init("client_bg.wasm");
         } catch (error) {
-            console.error(error);
+            if (!error.message.startsWith("Using exceptions for control flow, don't mind me. This isn't actually an error!")) {
+                throw error;
+            }
         }
 
-        console.log("ASDASDASD");
+        // Test web socket
         const exampleSocket = new WebSocket("ws://localhost:3000");
+        const sendMessage = (message) => {
+            exampleSocket.send(`MESSAGE! ${Math.random()}`);
+        }
+
         exampleSocket.onopen = (event) => {
             console.log("OPEN");
             exampleSocket.send("Here's some text that the server is urgently awaiting!");
+            setInterval(() => sendMessage("asd"), 100);
         };
     </script>
 </head>
