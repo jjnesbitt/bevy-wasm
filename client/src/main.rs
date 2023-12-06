@@ -31,6 +31,11 @@ const BACKGROUND_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
 const PLAYER_COLOR: Color = Color::rgb(0.3, 0.3, 0.7);
 const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
 
+#[wasm_bindgen(module = "/js/foo.js")]
+extern "C" {
+    fn sendPosition(x: f32, y: f32) -> String;
+}
+
 // #[wasm_bindgen]
 // pub fn get_player_pos() {
 //     //
@@ -352,6 +357,7 @@ fn send_player_position(query: Query<&Transform, With<Player>>) {
     let Vec2 { x, y } = player_transform.translation.xy();
 
     // TODO: Send x and y off
+    sendPosition(x, y);
 }
 
 fn check_for_ball_collisions(
