@@ -2,16 +2,13 @@
 
 use std::ops::{Add, Mul};
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::JsFuture;
 
 use bevy::{
-    input::gamepad::{GamepadButtonInput, GamepadEvent},
     prelude::*,
     sprite::collide_aabb::{collide, Collision},
     sprite::MaterialMesh2dBundle,
 };
 use web_sys;
-use web_sys::{Request, RequestInit, RequestMode, Response};
 
 // These constants are defined in `Transform` units.
 // Using the default 2D camera they correspond 1:1 with screen pixels.
@@ -33,15 +30,17 @@ const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
 
 #[wasm_bindgen(module = "/js/foo.js")]
 extern "C" {
-    fn sendPosition(x: f32, y: f32) -> String;
+    fn sendPosition(x: f32, y: f32);
+    fn createWebSocket();
 }
 
-// #[wasm_bindgen]
-// pub fn get_player_pos() {
-//     //
-// }
-
 fn main() {
+    // Create web socket before starting app
+    // The code to create a websocket in rust is extremely verbose and complicated. So I opted
+    // to create the websocket in JS and expose the method to send data
+    createWebSocket();
+
+    // Start app
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(Scoreboard { score: 0 })
@@ -64,17 +63,6 @@ fn main() {
         )
         .add_systems(Update, (read_gamepads, bevy::window::close_on_esc))
         .run();
-}
-
-// #[derive(Component)]
-// struct Position {
-//     x: f32,
-//     y: f32,
-// }
-
-#[derive(Event, Default)]
-struct MoveEvent {
-    key: String,
 }
 
 #[derive(Component)]
@@ -185,18 +173,6 @@ fn console_log(message: &String) {
     web_sys::console::log_1(&message.into());
 }
 
-// fn setup_window_keyevents(mut move_events: EventWriter<MoveEvent>) {
-//     let window = web_sys::window().expect("global window does not exists");
-//     let listener = EventListener::new(&window, "keydown", move |event| {
-//         let keyboard_event = event.clone().dyn_into::<web_sys::KeyboardEvent>().unwrap();
-//         move_events.send(MoveEvent {
-//             key: keyboard_event.key(),
-//         });
-//         web_sys::console::log_1(&keyboard_event.key().into());
-//     });
-//     listener.forget();
-// }
-
 // Add the game's entities to our world
 fn setup(
     mut commands: Commands,
@@ -262,35 +238,6 @@ fn setup(
         Collider,
     ));
 }
-
-// fn read_gamepads(
-//     mut gamepad_evr: EventReader<GamepadEvent>,
-//     mut query: Query<&mut Transform, With<Player>>,
-//     time: Res<Time>,
-// ) {
-//     let mut translation = Vec3::new(0.0, 0.0, 0.0);
-//     for event in gamepad_evr.read() {
-//         console_log(&format!("{:?}", event));
-//         match event {
-//             GamepadEvent::Axis(axis_event) => match axis_event.axis_type {
-//                 GamepadAxisType::LeftStickX => {
-//                     translation[0] = axis_event.value;
-//                 }
-//                 GamepadAxisType::LeftStickY => {
-//                     translation[1] = axis_event.value;
-//                 }
-//                 _ => {}
-//             },
-//             _ => {}
-//         }
-//     }
-
-//     // Set new location
-//     let mut player_transform = query.single_mut();
-//     player_transform.translation = player_transform
-//         .translation
-//         .add(translation.mul(PLAYER_SPEED * time.delta_seconds()));
-// }
 
 fn read_gamepads(
     gamepads: Res<Gamepads>,

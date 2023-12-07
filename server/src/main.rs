@@ -50,6 +50,7 @@ async fn handle_connection(stream: TcpStream, state: SharedGameState) -> TungRes
     while let Some(msg) = read.next().await {
         let msg = msg?;
         if msg.is_text() || msg.is_binary() {
+            // println!("{:?}", msg);
             write.send(msg).await?;
         }
     }
