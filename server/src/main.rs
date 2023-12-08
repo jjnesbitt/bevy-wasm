@@ -1,25 +1,22 @@
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use tokio::net::TcpStream;
-use tokio_tungstenite::tungstenite::{client, Result as TungResult};
+use tokio_tungstenite::tungstenite::{client, Message, Result as TungResult};
 // type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 use uuid::Uuid;
 
 type SendSyncError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 use rand::distributions::{Alphanumeric, DistString};
+use serde::{Deserialize, Serialize};
+use serde_json::Result as SerdeResult;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
 
-use shared::PositionEvent;
-
-#[derive(Clone, Debug)]
-struct GameClient {
-    uuid: Uuid,
-    position: [f32; 2],
-}
+// The shared library between server and client
+use shared::{GameClient, PositionEvent};
 
 #[derive(Clone, Debug)]
 struct GameState {
@@ -58,32 +55,54 @@ async fn handle_connection(stream: TcpStream, state: SharedGameState) -> TungRes
         );
     }
 
-    // Parse received message
-    let (_, mut read) = ws_stream.split();
-    while let Some(msg) = read.next().await {
-        let msg = msg?;
-        if let Ok(msg) = msg.to_text() {
-            if let Ok(pos) = serde_json::from_str::<PositionEvent>(msg) {
-                let mut state = state.lock().expect("Couldn't acquire state lock!");
-                let client = state
-                    .clients
-                    .get_mut(&client_id)
-                    .expect("Couldn't find previously created client");
+    // Closure that removes the client
+    let close_client = || -> Result<GameClient, &str> {
+        let mut state = state.lock().expect("Couldn't acquire state lock!");
+        return state.clients.remove(&client_id).ok_or("Client not found");
+    };
 
-                // Set position
-                client.position = [pos.x, pos.y];
+    // Parse received message
+    let (mut write, mut read) = ws_stream.split();
+    while let Some(msg) = read.next().await {
+        match msg? {
+            Message::Text(msg) => {
+                if let Ok(pos) = serde_json::from_str::<PositionEvent>(&msg) {
+                    let mut state = state.lock().expect("Couldn't acquire state lock!");
+                    let client = state
+                        .clients
+                        .get_mut(&client_id)
+                        .expect("Couldn't find previously created client");
+
+                    // Set position
+                    client.position = [pos.x, pos.y];
+                }
+
+                // TODO: Move this someplace else
+                // Now we're going to respond with serialized game state
+                let msg = {
+                    let state = state.lock().expect("Couldn't acquire state lock!");
+
+                    // Only send other clients
+                    let clients =
+                        Vec::from_iter(state.clients.values().filter(|x| x.uuid != client_id));
+
+                    // Return serialized string
+                    serde_json::to_string(&clients).expect("asd")
+                };
+
+                write.send(Message::text(msg)).await?;
             }
+            Message::Close(_) => {
+                if close_client().is_err() {
+                    panic!("Couldn't remove client!")
+                }
+            }
+            _ => {}
         }
     }
 
-    // This means the web socket is closed, and so we'll remove the client from the game state
-    {
-        let mut state = state.lock().expect("Couldn't acquire state lock!");
-        state
-            .clients
-            .remove(&client_id)
-            .expect("Couldn't remove client from game state!");
-    }
+    // Unsure if this will be reached, ignore failure
+    let _ = close_client();
 
     Ok(())
 }

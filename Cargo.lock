@@ -1285,6 +1285,7 @@ dependencies = [
  "gloo",
  "rand",
  "serde_json",
+ "shared",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -3408,6 +3409,7 @@ dependencies = [
  "bytes",
  "futures",
  "rand",
+ "serde",
  "serde_json",
  "shared",
  "tokio",
@@ -3441,6 +3443,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

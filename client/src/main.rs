@@ -10,6 +10,9 @@ use bevy::{
 };
 use web_sys;
 
+// The shared library between server and client
+use shared::GameClient;
+
 // These constants are defined in `Transform` units.
 // Using the default 2D camera they correspond 1:1 with screen pixels.
 const PLAYER_SIZE: Vec3 = Vec3::new(120.0, 120.0, 0.0);
@@ -32,6 +35,7 @@ const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
 extern "C" {
     fn sendPosition(x: f32, y: f32);
     fn createWebSocket();
+    fn readMessages() -> Vec<String>;
 }
 
 fn main() {
@@ -55,6 +59,7 @@ fn main() {
                 apply_velocity,
                 move_player,
                 send_player_position,
+                read_web_socket,
                 check_for_wall_collisions,
                 check_for_ball_collisions,
             )
@@ -303,8 +308,18 @@ fn send_player_position(query: Query<&Transform, With<Player>>) {
     let player_transform = query.single();
     let Vec2 { x, y } = player_transform.translation.xy();
 
-    // TODO: Send x and y off
     sendPosition(x, y);
+}
+
+fn read_web_socket() {
+    let messages = readMessages();
+
+    // Each message is a list of clients, so just take the last message
+    if let Some(msg) = messages.last() {
+        if let Some(clients) = serde_json::from_str::<Vec<GameClient>>(&msg).ok() {
+            console_log(&format!("{:?}", clients));
+        }
+    }
 }
 
 fn check_for_ball_collisions(
