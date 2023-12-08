@@ -74,6 +74,11 @@ fn main() {
 struct Player;
 
 #[derive(Component)]
+struct OtherPlayer {
+    client: GameClient,
+}
+
+#[derive(Component)]
 struct Ball;
 
 #[derive(Component, Deref, DerefMut)]
@@ -311,13 +316,46 @@ fn send_player_position(query: Query<&Transform, With<Player>>) {
     sendPosition(x, y);
 }
 
-fn read_web_socket() {
+fn read_web_socket(mut commands: Commands, query: Query<(Entity, &OtherPlayer)>) {
     let messages = readMessages();
 
     // Each message is a list of clients, so just take the last message
-    if let Some(msg) = messages.last() {
-        if let Some(clients) = serde_json::from_str::<Vec<GameClient>>(&msg).ok() {
-            console_log(&format!("{:?}", clients));
+    let Some(msg) = messages.last() else {
+        return;
+    };
+
+    // TODO: This sucks and should be refactored
+    // We should instead only remove entities that have actually disconnected,
+    // and should just update the ones that are still present
+
+    // Despawn all players
+    for (entity, _) in query.iter() {
+        commands.entity(entity).despawn_recursive();
+    }
+
+    // Create an entity for each other player found
+    if let Some(clients) = serde_json::from_str::<Vec<GameClient>>(&msg).ok() {
+        // console_log(&format!("{:?}", clients));
+
+        for client in clients.iter() {
+            commands.spawn((
+                SpriteBundle {
+                    transform: Transform {
+                        translation: Vec3::new(client.position[0], client.position[1], 0.0),
+                        scale: PLAYER_SIZE,
+                        ..default()
+                    },
+                    sprite: Sprite {
+                        color: PLAYER_COLOR,
+                        ..default()
+                    },
+                    ..default()
+                },
+                Collider,
+                OtherPlayer {
+                    client: client.clone(),
+                },
+            ));
         }
     }
 }

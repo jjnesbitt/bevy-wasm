@@ -77,7 +77,6 @@ async fn handle_connection(stream: TcpStream, state: SharedGameState) -> TungRes
                     client.position = [pos.x, pos.y];
                 }
 
-                // TODO: Move this someplace else
                 // Now we're going to respond with serialized game state
                 let msg = {
                     let state = state.lock().expect("Couldn't acquire state lock!");
