@@ -1,27 +1,35 @@
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use tokio::net::TcpStream;
-use tokio_tungstenite::tungstenite::Result as TungResult;
+use tokio_tungstenite::tungstenite::{client, Result as TungResult};
 // type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
+use uuid::Uuid;
 
 type SendSyncError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 use rand::distributions::{Alphanumeric, DistString};
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+
+use shared::PositionEvent;
 
 #[derive(Clone, Debug)]
 struct GameClient {
-    uuid: String,
-    position: [u32; 2],
+    uuid: Uuid,
+    position: [f32; 2],
 }
 
 #[derive(Clone, Debug)]
 struct GameState {
-    clients: Vec<GameClient>,
+    clients: HashMap<Uuid, GameClient>,
 }
 impl GameState {
     fn new() -> GameState {
-        return GameState { clients: vec![] };
+        return GameState {
+            clients: HashMap::new(),
+        };
     }
 }
 
@@ -37,22 +45,44 @@ async fn handle_connection(stream: TcpStream, state: SharedGameState) -> TungRes
         .await
         .expect("Error during the websocket handshake occurred");
 
-    // Acquire lock and push new client
+    // Use scope to avoid holding onto mutex lock
+    let client_id = Uuid::new_v4();
     {
-        let mut gamestate = state.lock().expect("something bad");
-        gamestate.clients.push(GameClient {
-            uuid: Alphanumeric.sample_string(&mut rand::thread_rng(), 8),
-            position: [0, 0],
-        });
+        let mut state = state.lock().expect("Couldn't acquire state lock!");
+        state.clients.insert(
+            client_id.clone(),
+            GameClient {
+                uuid: client_id.clone(),
+                position: [0.0, 0.0],
+            },
+        );
     }
 
-    let (mut write, mut read) = ws_stream.split();
+    // Parse received message
+    let (_, mut read) = ws_stream.split();
     while let Some(msg) = read.next().await {
         let msg = msg?;
-        if msg.is_text() || msg.is_binary() {
-            // println!("{:?}", msg);
-            write.send(msg).await?;
+        if let Ok(msg) = msg.to_text() {
+            if let Ok(pos) = serde_json::from_str::<PositionEvent>(msg) {
+                let mut state = state.lock().expect("Couldn't acquire state lock!");
+                let client = state
+                    .clients
+                    .get_mut(&client_id)
+                    .expect("Couldn't find previously created client");
+
+                // Set position
+                client.position = [pos.x, pos.y];
+            }
         }
+    }
+
+    // This means the web socket is closed, and so we'll remove the client from the game state
+    {
+        let mut state = state.lock().expect("Couldn't acquire state lock!");
+        state
+            .clients
+            .remove(&client_id)
+            .expect("Couldn't remove client from game state!");
     }
 
     Ok(())
@@ -67,14 +97,14 @@ async fn main() -> Result<(), SendSyncError> {
     let state = Arc::new(Mutex::new(GameState::new()));
 
     // Spawn printing service
-    // let readonlyclone = state.clone();
-    // use std::{thread, time};
-    // tokio::spawn(async move {
-    //     loop {
-    //         thread::sleep(time::Duration::from_secs(1));
-    //         println!("{:?}", readonlyclone.lock().unwrap().clients);
-    //     }
-    // });
+    let readonlyclone = state.clone();
+    use std::{thread, time};
+    tokio::spawn(async move {
+        loop {
+            thread::sleep(time::Duration::from_secs(1));
+            println!("{:?}", readonlyclone.lock().unwrap().clients);
+        }
+    });
 
     // Accept connections
     loop {

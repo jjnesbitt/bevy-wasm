@@ -4,10 +4,6 @@ const genRanHex = size => [...Array(size)].map(() => Math.floor(Math.random() * 
 let websocket;
 export function createWebSocket() {
     websocket = new WebSocket("ws://localhost:3000");
-    websocket.onopen = (event) => {
-        // First thing to do is to send this client's UUID
-        websocket.send(genRanHex(8));
-    };
 }
 
 export function sendPosition(x, y) {

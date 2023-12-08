@@ -203,40 +203,40 @@ fn setup(
     ));
 
     // Walls
-    commands.spawn(WallBundle::new(WallLocation::Left));
-    commands.spawn(WallBundle::new(WallLocation::Right));
-    commands.spawn(WallBundle::new(WallLocation::Bottom));
-    commands.spawn(WallBundle::new(WallLocation::Top));
+    // commands.spawn(WallBundle::new(WallLocation::Left));
+    // commands.spawn(WallBundle::new(WallLocation::Right));
+    // commands.spawn(WallBundle::new(WallLocation::Bottom));
+    // commands.spawn(WallBundle::new(WallLocation::Top));
 
     // Balls
-    const BALL_COLOR: Color = Color::rgb(1.0, 0.5, 0.5);
-    const BALL_STARTING_POSITION: Vec3 = Vec3::new(0.0, -50.0, 1.0);
-    const BALL_SIZE: Vec3 = Vec3::new(30.0, 30.0, 0.0);
-    const INITIAL_BALL_DIRECTION: Vec2 = Vec2::new(0.5, -0.5);
-    const BALL_SPEED: f32 = 400.0;
-    commands.spawn((
-        MaterialMesh2dBundle {
-            mesh: meshes.add(shape::Circle::default().into()).into(),
-            material: materials.add(ColorMaterial::from(BALL_COLOR)),
-            transform: Transform::from_translation(BALL_STARTING_POSITION).with_scale(BALL_SIZE),
-            ..default()
-        },
-        Ball,
-        Velocity(INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED),
-        Collider,
-    ));
-    commands.spawn((
-        MaterialMesh2dBundle {
-            mesh: meshes.add(shape::Circle::default().into()).into(),
-            material: materials.add(ColorMaterial::from(BALL_COLOR)),
-            transform: Transform::from_translation(Vec3::new(0.0, 60.0, 12.0))
-                .with_scale(BALL_SIZE),
-            ..default()
-        },
-        Ball,
-        Velocity(Vec2::new(0.5, 0.5).normalize() * BALL_SPEED),
-        Collider,
-    ));
+    // const BALL_COLOR: Color = Color::rgb(1.0, 0.5, 0.5);
+    // const BALL_STARTING_POSITION: Vec3 = Vec3::new(0.0, -50.0, 1.0);
+    // const BALL_SIZE: Vec3 = Vec3::new(30.0, 30.0, 0.0);
+    // const INITIAL_BALL_DIRECTION: Vec2 = Vec2::new(0.5, -0.5);
+    // const BALL_SPEED: f32 = 400.0;
+    // commands.spawn((
+    //     MaterialMesh2dBundle {
+    //         mesh: meshes.add(shape::Circle::default().into()).into(),
+    //         material: materials.add(ColorMaterial::from(BALL_COLOR)),
+    //         transform: Transform::from_translation(BALL_STARTING_POSITION).with_scale(BALL_SIZE),
+    //         ..default()
+    //     },
+    //     Ball,
+    //     Velocity(INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED),
+    //     Collider,
+    // ));
+    // commands.spawn((
+    //     MaterialMesh2dBundle {
+    //         mesh: meshes.add(shape::Circle::default().into()).into(),
+    //         material: materials.add(ColorMaterial::from(BALL_COLOR)),
+    //         transform: Transform::from_translation(Vec3::new(0.0, 60.0, 12.0))
+    //             .with_scale(BALL_SIZE),
+    //         ..default()
+    //     },
+    //     Ball,
+    //     Velocity(Vec2::new(0.5, 0.5).normalize() * BALL_SPEED),
+    //     Collider,
+    // ));
 }
 
 fn read_gamepads(
