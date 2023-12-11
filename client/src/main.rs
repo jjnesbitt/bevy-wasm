@@ -5,8 +5,7 @@ use wasm_bindgen::prelude::*;
 
 use bevy::{
     prelude::*,
-    sprite::collide_aabb::{collide, Collision},
-    sprite::MaterialMesh2dBundle,
+    text::{BreakLineOn, Text2dBounds},
 };
 use web_sys;
 
@@ -19,17 +18,8 @@ const PLAYER_SIZE: Vec3 = Vec3::new(120.0, 120.0, 0.0);
 const GAP_BETWEEN_PLAYER_AND_FLOOR: f32 = 60.0;
 const PLAYER_SPEED: f32 = 500.0;
 
-const WALL_THICKNESS: f32 = 10.0;
-// x coordinates
-const LEFT_WALL: f32 = -450.;
-const RIGHT_WALL: f32 = 450.;
-// y coordinates
-const BOTTOM_WALL: f32 = -300.;
-const TOP_WALL: f32 = 300.;
-
 const BACKGROUND_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
 const PLAYER_COLOR: Color = Color::rgb(0.3, 0.3, 0.7);
-const WALL_COLOR: Color = Color::rgb(0.8, 0.8, 0.8);
 
 #[wasm_bindgen(module = "/js/foo.js")]
 extern "C" {
@@ -47,7 +37,6 @@ fn main() {
     // Start app
     App::new()
         .add_plugins(DefaultPlugins)
-        .insert_resource(Scoreboard { score: 0 })
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .add_event::<CollisionEvent>()
         .add_systems(Startup, setup)
@@ -60,8 +49,6 @@ fn main() {
                 move_player,
                 send_player_position,
                 read_web_socket,
-                check_for_wall_collisions,
-                check_for_ball_collisions,
             )
                 // `chain`ing systems together runs them in order
                 .chain(),
@@ -96,105 +83,17 @@ struct Brick;
 #[derive(Resource)]
 struct CollisionSound(Handle<AudioSource>);
 
-#[derive(Component)]
-struct Wall;
-
-// This bundle is a collection of the components that define a "wall" in our game
-#[derive(Bundle)]
-struct WallBundle {
-    // You can nest bundles inside of other bundles like this
-    // Allowing you to compose their functionality
-    sprite_bundle: SpriteBundle,
-    collider: Collider,
-    wall: Wall,
-}
-
-/// Which side of the arena is this wall located on?
-enum WallLocation {
-    Left,
-    Right,
-    Bottom,
-    Top,
-}
-
-impl WallLocation {
-    fn position(&self) -> Vec2 {
-        match self {
-            WallLocation::Left => Vec2::new(LEFT_WALL, 0.),
-            WallLocation::Right => Vec2::new(RIGHT_WALL, 0.),
-            WallLocation::Bottom => Vec2::new(0., BOTTOM_WALL),
-            WallLocation::Top => Vec2::new(0., TOP_WALL),
-        }
-    }
-
-    fn size(&self) -> Vec2 {
-        let arena_height = TOP_WALL - BOTTOM_WALL;
-        let arena_width = RIGHT_WALL - LEFT_WALL;
-        // Make sure we haven't messed up our constants
-        assert!(arena_height > 0.0);
-        assert!(arena_width > 0.0);
-
-        match self {
-            WallLocation::Left | WallLocation::Right => {
-                Vec2::new(WALL_THICKNESS, arena_height + WALL_THICKNESS)
-            }
-            WallLocation::Bottom | WallLocation::Top => {
-                Vec2::new(arena_width + WALL_THICKNESS, WALL_THICKNESS)
-            }
-        }
-    }
-}
-
-impl WallBundle {
-    // This "builder method" allows us to reuse logic across our wall entities,
-    // making our code easier to read and less prone to bugs when we change the logic
-    fn new(location: WallLocation) -> WallBundle {
-        WallBundle {
-            sprite_bundle: SpriteBundle {
-                transform: Transform {
-                    // We need to convert our Vec2 into a Vec3, by giving it a z-coordinate
-                    // This is used to determine the order of our sprites
-                    translation: location.position().extend(0.0),
-                    // The z-scale of 2D objects must always be 1.0,
-                    // or their ordering will be affected in surprising ways.
-                    // See https://github.com/bevyengine/bevy/issues/4149
-                    scale: location.size().extend(1.0),
-                    ..default()
-                },
-                sprite: Sprite {
-                    color: WALL_COLOR,
-                    ..default()
-                },
-                ..default()
-            },
-            collider: Collider,
-            wall: Wall,
-        }
-    }
-}
-
-// This resource tracks the game's score
-#[derive(Resource)]
-struct Scoreboard {
-    score: usize,
-}
-
 fn console_log(message: &String) {
     web_sys::console::log_1(&message.into());
 }
 
 // Add the game's entities to our world
-fn setup(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
+fn setup(mut commands: Commands) {
     // Camera
     commands.spawn(Camera2dBundle::default());
 
     // Player
-    let player_y = BOTTOM_WALL + GAP_BETWEEN_PLAYER_AND_FLOOR;
-
+    let player_y = -300.0 + GAP_BETWEEN_PLAYER_AND_FLOOR;
     commands.spawn((
         SpriteBundle {
             transform: Transform {
@@ -211,42 +110,6 @@ fn setup(
         Player,
         Collider,
     ));
-
-    // Walls
-    // commands.spawn(WallBundle::new(WallLocation::Left));
-    // commands.spawn(WallBundle::new(WallLocation::Right));
-    // commands.spawn(WallBundle::new(WallLocation::Bottom));
-    // commands.spawn(WallBundle::new(WallLocation::Top));
-
-    // Balls
-    // const BALL_COLOR: Color = Color::rgb(1.0, 0.5, 0.5);
-    // const BALL_STARTING_POSITION: Vec3 = Vec3::new(0.0, -50.0, 1.0);
-    // const BALL_SIZE: Vec3 = Vec3::new(30.0, 30.0, 0.0);
-    // const INITIAL_BALL_DIRECTION: Vec2 = Vec2::new(0.5, -0.5);
-    // const BALL_SPEED: f32 = 400.0;
-    // commands.spawn((
-    //     MaterialMesh2dBundle {
-    //         mesh: meshes.add(shape::Circle::default().into()).into(),
-    //         material: materials.add(ColorMaterial::from(BALL_COLOR)),
-    //         transform: Transform::from_translation(BALL_STARTING_POSITION).with_scale(BALL_SIZE),
-    //         ..default()
-    //     },
-    //     Ball,
-    //     Velocity(INITIAL_BALL_DIRECTION.normalize() * BALL_SPEED),
-    //     Collider,
-    // ));
-    // commands.spawn((
-    //     MaterialMesh2dBundle {
-    //         mesh: meshes.add(shape::Circle::default().into()).into(),
-    //         material: materials.add(ColorMaterial::from(BALL_COLOR)),
-    //         transform: Transform::from_translation(Vec3::new(0.0, 60.0, 12.0))
-    //             .with_scale(BALL_SIZE),
-    //         ..default()
-    //     },
-    //     Ball,
-    //     Velocity(Vec2::new(0.5, 0.5).normalize() * BALL_SPEED),
-    //     Collider,
-    // ));
 }
 
 fn read_gamepads(
@@ -338,115 +201,47 @@ fn read_web_socket(mut commands: Commands, query: Query<(Entity, &OtherPlayer)>)
         // console_log(&format!("{:?}", clients));
 
         for client in clients.iter() {
-            commands.spawn((
-                SpriteBundle {
-                    transform: Transform {
-                        translation: Vec3::new(client.position[0], client.position[1], 0.0),
-                        scale: PLAYER_SIZE,
+            console_log(&client.uuid.to_string()[0..4].to_string());
+
+            commands
+                .spawn((
+                    SpriteBundle {
+                        transform: Transform {
+                            translation: Vec3::new(client.position[0], client.position[1], 0.0),
+                            ..default()
+                        },
+                        sprite: Sprite {
+                            color: PLAYER_COLOR,
+                            custom_size: Some(PLAYER_SIZE.xy()),
+                            ..default()
+                        },
                         ..default()
                     },
-                    sprite: Sprite {
-                        color: PLAYER_COLOR,
-                        ..default()
+                    Collider,
+                    OtherPlayer {
+                        client: client.clone(),
                     },
-                    ..default()
-                },
-                Collider,
-                OtherPlayer {
-                    client: client.clone(),
-                },
-            ));
-        }
-    }
-}
-
-fn check_for_ball_collisions(
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut balls_query: Query<
-        (
-            Entity,
-            &mut Handle<ColorMaterial>,
-            &Transform,
-            &mut Velocity,
-        ),
-        (With<Ball>, With<Collider>),
-    >,
-) {
-    // Inefficient collision logic
-    for ball1 in balls_query.iter() {
-        for ball2 in balls_query.iter() {
-            // Entity check
-            if ball1.0 == ball2.0 {
-                continue;
-            }
-
-            let trans1 = ball1.2;
-            let trans2 = ball2.2;
-            let collision = collide(
-                trans1.translation,
-                trans1.scale.truncate(),
-                trans2.translation,
-                trans2.scale.truncate(),
-            );
-
-            if collision.is_some() {
-                if let Some(color_material) = materials.get_mut(ball1.1.id()) {
-                    color_material.color = Color::rgb(
-                        rand::random::<f32>(),
-                        rand::random::<f32>(),
-                        rand::random::<f32>(),
-                    );
-                }
-
-                if let Some(color_material) = materials.get_mut(ball2.1.id()) {
-                    color_material.color = Color::rgb(
-                        rand::random::<f32>(),
-                        rand::random::<f32>(),
-                        rand::random::<f32>(),
-                    );
-                }
-            }
-        }
-    }
-}
-
-fn check_for_wall_collisions(
-    walls_query: Query<&Transform, (With<Wall>, With<Collider>)>,
-    mut balls_query: Query<(&mut Velocity, &Transform), (With<Ball>, With<Collider>)>,
-) {
-    for wall_transform in walls_query.iter() {
-        for (mut ball_vel, ball_trans) in balls_query.iter_mut() {
-            let collision = collide(
-                ball_trans.translation,
-                ball_trans.scale.truncate(),
-                wall_transform.translation,
-                wall_transform.scale.truncate(),
-            );
-            if let Some(collision) = collision {
-                // reflect the ball when it collides
-                let mut reflect_x = false;
-                let mut reflect_y = false;
-
-                // only reflect if the ball's velocity is going in the opposite direction of the
-                // collision
-                match collision {
-                    Collision::Left => reflect_x = ball_vel.x > 0.0,
-                    Collision::Right => reflect_x = ball_vel.x < 0.0,
-                    Collision::Top => reflect_y = ball_vel.y < 0.0,
-                    Collision::Bottom => reflect_y = ball_vel.y > 0.0,
-                    Collision::Inside => { /* do nothing */ }
-                }
-
-                // reflect velocity on the x-axis if we hit something on the x-axis
-                if reflect_x {
-                    ball_vel.x = -ball_vel.x;
-                }
-
-                // reflect velocity on the y-axis if we hit something on the y-axis
-                if reflect_y {
-                    ball_vel.y = -ball_vel.y;
-                }
-            }
+                ))
+                // Add text to display other player name/id
+                .with_children(|parent| {
+                    parent.spawn(Text2dBundle {
+                        text: Text {
+                            sections: vec![TextSection::new(
+                                &client.uuid.to_string(),
+                                TextStyle::default(),
+                            )],
+                            alignment: TextAlignment::Center,
+                            linebreak_behavior: BreakLineOn::AnyCharacter,
+                        },
+                        text_2d_bounds: Text2dBounds {
+                            // Wrap text in the rectangle
+                            size: PLAYER_SIZE.xy(),
+                        },
+                        // ensure the text is drawn on top of the box
+                        transform: Transform::from_translation(Vec3::Z),
+                        ..default()
+                    });
+                });
         }
     }
 }

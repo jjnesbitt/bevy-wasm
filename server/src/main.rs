@@ -1,15 +1,12 @@
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use tokio::net::TcpStream;
-use tokio_tungstenite::tungstenite::{client, Message, Result as TungResult};
+use tokio_tungstenite::tungstenite::{Message, Result as TungResult};
 // type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 use uuid::Uuid;
 
 type SendSyncError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
-use rand::distributions::{Alphanumeric, DistString};
-use serde::{Deserialize, Serialize};
-use serde_json::Result as SerdeResult;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
