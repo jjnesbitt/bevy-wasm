@@ -5,7 +5,9 @@ use wasm_bindgen::prelude::*;
 
 use bevy::{
     prelude::*,
+    sprite::MaterialMesh2dBundle,
     text::{BreakLineOn, Text2dBounds},
+    window::{WindowResized, WindowResolution},
 };
 use web_sys;
 
@@ -40,7 +42,14 @@ fn main() {
 
     // Start app
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                canvas: Some("#game-canvas".into()),
+                resolution: WindowResolution::new(1920., 1080.),
+                ..default()
+            }),
+            ..default()
+        }))
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .add_event::<CollisionEvent>()
         .add_systems(Startup, (setup, setup_map))
@@ -59,7 +68,12 @@ fn main() {
         )
         .add_systems(
             Update,
-            (read_gamepads, handle_zoom, bevy::window::close_on_esc),
+            (
+                read_gamepads,
+                handle_zoom,
+                on_resize_system,
+                bevy::window::close_on_esc,
+            ),
         )
         .run();
 }
@@ -95,23 +109,26 @@ fn console_log(message: &String) {
 }
 
 // Add the game's entities to our world
-fn setup(mut commands: Commands) {
+fn setup(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
     // Camera
     commands.spawn(Camera2dBundle::default());
 
     // Player
     let player_y = -300.0 + GAP_BETWEEN_PLAYER_AND_FLOOR;
     commands.spawn((
-        SpriteBundle {
+        MaterialMesh2dBundle {
             transform: Transform {
-                translation: Vec3::new(0.0, player_y, 50.0),
+                // Position player forward, in-front of the background
+                translation: Vec3::new(0., player_y, 1.),
                 scale: PLAYER_SIZE,
                 ..default()
             },
-            sprite: Sprite {
-                color: PLAYER_COLOR,
-                ..default()
-            },
+            mesh: meshes.add(Mesh::from(shape::Circle::default())).into(),
+            material: materials.add(ColorMaterial::from(PLAYER_COLOR)),
             ..default()
         },
         Player,
@@ -152,6 +169,18 @@ fn setup_map(mut commands: Commands) {
             },
             ..default()
         });
+    }
+}
+
+/// This system shows how to respond to a window being resized.
+fn on_resize_system(
+    mut windows: Query<&mut Window>,
+    mut resize_reader: EventReader<WindowResized>,
+) {
+    let mut window = windows.single_mut();
+    for e in resize_reader.read() {
+        console_log(&format!("{:.2}, {:.2}", e.width, e.height));
+        window.resolution.set(e.width, e.height);
     }
 }
 
@@ -272,7 +301,12 @@ fn send_player_position(query: Query<&Transform, With<Player>>) {
     sendPosition(x, y);
 }
 
-fn read_web_socket(mut commands: Commands, query: Query<(Entity, &OtherPlayer)>) {
+fn read_web_socket(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    query: Query<(Entity, &OtherPlayer)>,
+) {
     let messages = readMessages();
 
     // Each message is a list of clients, so just take the last message
@@ -294,17 +328,15 @@ fn read_web_socket(mut commands: Commands, query: Query<(Entity, &OtherPlayer)>)
         for client in clients.iter() {
             commands
                 .spawn((
-                    SpriteBundle {
+                    MaterialMesh2dBundle {
+                        // Position player forward, in-front of the background
                         transform: Transform {
-                            // Position player forward, in-front of the background
-                            translation: Vec3::new(client.position[0], client.position[1], 50.0),
+                            translation: Vec3::new(client.position[0], client.position[1], 1.),
+                            scale: PLAYER_SIZE,
                             ..default()
                         },
-                        sprite: Sprite {
-                            color: PLAYER_COLOR,
-                            custom_size: Some(PLAYER_SIZE.xy()),
-                            ..default()
-                        },
+                        mesh: meshes.add(Mesh::from(shape::Circle::default())).into(),
+                        material: materials.add(ColorMaterial::from(PLAYER_COLOR)),
                         ..default()
                     },
                     Collider,
@@ -328,7 +360,11 @@ fn read_web_socket(mut commands: Commands, query: Query<(Entity, &OtherPlayer)>)
                             size: PLAYER_SIZE.xy(),
                         },
                         // ensure the text is drawn on top of the box
-                        transform: Transform::from_translation(Vec3::Z),
+                        transform: Transform {
+                            translation: Vec3::new(client.position[0], client.position[1], 5.),
+                            rotation: Quat::IDENTITY,
+                            scale: Vec3::splat(10.),
+                        },
                         ..default()
                     });
                 });
