@@ -184,10 +184,12 @@ fn on_resize_system(
     }
 }
 
+// TODO: COMBINE READ_GAMEPADS and MOVE_PLAYER
 fn read_gamepads(
     gamepads: Res<Gamepads>,
     gamepad_axis: Res<Axis<GamepadAxis>>,
     mut query: Query<&mut Transform, With<Player>>,
+    mut cameras: Query<&mut Transform, (With<Camera>, Without<Player>)>,
     time: Res<Time>,
 ) {
     let mut translation = Vec3::new(1.0, 1.0, 0.0);
@@ -213,6 +215,12 @@ fn read_gamepads(
     // Set new location
     let mut player_transform = query.single_mut();
     player_transform.translation = player_transform.translation.add(translation);
+
+    // Set camera center to match player's
+    for mut transform in &mut cameras {
+        transform.translation.x = player_transform.translation.x;
+        transform.translation.y = player_transform.translation.y;
+    }
 }
 
 fn move_player(
@@ -324,51 +332,53 @@ fn read_web_socket(
     }
 
     // Create an entity for each other player found
-    if let Some(clients) = serde_json::from_str::<Vec<GameClient>>(&msg).ok() {
-        for client in clients.iter() {
-            commands
-                .spawn((
-                    MaterialMesh2dBundle {
-                        // Position player forward, in-front of the background
-                        transform: Transform {
-                            translation: Vec3::new(client.position[0], client.position[1], 1.),
-                            scale: PLAYER_SIZE,
-                            ..default()
-                        },
-                        mesh: meshes.add(Mesh::from(shape::Circle::default())).into(),
-                        material: materials.add(ColorMaterial::from(PLAYER_COLOR)),
+    let Some(clients) = serde_json::from_str::<Vec<GameClient>>(&msg).ok() else {
+        return;
+    };
+
+    for client in clients.iter() {
+        commands
+            .spawn((
+                MaterialMesh2dBundle {
+                    // Position player forward, in-front of the background
+                    transform: Transform {
+                        translation: Vec3::new(client.position[0], client.position[1], 1.),
+                        scale: PLAYER_SIZE,
                         ..default()
                     },
-                    Collider,
-                    OtherPlayer {
-                        client: client.clone(),
+                    mesh: meshes.add(Mesh::from(shape::Circle::default())).into(),
+                    material: materials.add(ColorMaterial::from(PLAYER_COLOR)),
+                    ..default()
+                },
+                Collider,
+                OtherPlayer {
+                    client: client.clone(),
+                },
+            ))
+            // Add text to display other player name/id
+            .with_children(|parent| {
+                parent.spawn(Text2dBundle {
+                    text: Text {
+                        sections: vec![TextSection::new(
+                            &client.uuid.to_string(),
+                            TextStyle::default(),
+                        )],
+                        alignment: TextAlignment::Center,
+                        linebreak_behavior: BreakLineOn::AnyCharacter,
                     },
-                ))
-                // Add text to display other player name/id
-                .with_children(|parent| {
-                    parent.spawn(Text2dBundle {
-                        text: Text {
-                            sections: vec![TextSection::new(
-                                &client.uuid.to_string(),
-                                TextStyle::default(),
-                            )],
-                            alignment: TextAlignment::Center,
-                            linebreak_behavior: BreakLineOn::AnyCharacter,
-                        },
-                        text_2d_bounds: Text2dBounds {
-                            // Wrap text in the rectangle
-                            size: PLAYER_SIZE.xy(),
-                        },
-                        // ensure the text is drawn on top of the box
-                        transform: Transform {
-                            translation: Vec3::new(client.position[0], client.position[1], 5.),
-                            rotation: Quat::IDENTITY,
-                            scale: Vec3::splat(10.),
-                        },
-                        ..default()
-                    });
+                    text_2d_bounds: Text2dBounds {
+                        // Wrap text in the rectangle
+                        size: PLAYER_SIZE.xy(),
+                    },
+                    // ensure the text is drawn on top of the box
+                    transform: Transform {
+                        translation: Vec3::new(client.position[0], client.position[1], 5.),
+                        rotation: Quat::IDENTITY,
+                        scale: Vec3::splat(10.),
+                    },
+                    ..default()
                 });
-        }
+            });
     }
 }
 
