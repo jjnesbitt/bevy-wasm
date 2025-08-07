@@ -372,9 +372,9 @@ fn read_web_socket(
                     },
                     // ensure the text is drawn on top of the box
                     transform: Transform {
-                        translation: Vec3::new(client.position[0], client.position[1], 5.),
+                        translation: Vec3::new(0., 0., 2.),
                         rotation: Quat::IDENTITY,
-                        scale: Vec3::splat(10.),
+                        scale: Vec3::splat(0.01),
                     },
                     ..default()
                 });
