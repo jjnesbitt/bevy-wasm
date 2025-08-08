@@ -67,7 +67,7 @@ fn main() {
                 move_player,
                 send_player_position,
                 read_client_messages,
-                add_new_clients,
+                sync_clients_to_players,
                 update_existing_player_positions,
             )
                 // `chain`ing systems together runs them in order
@@ -329,6 +329,7 @@ fn read_client_messages(mut positions: ResMut<ClientPositions>) {
         return;
     };
 
+    positions.map.clear();
     for client in clients.iter() {
         positions.map.insert(client.uuid, client.position);
     }
@@ -346,8 +347,7 @@ fn update_existing_player_positions(
     }
 }
 
-// TODO: Remove old clients
-fn add_new_clients(
+fn sync_clients_to_players(
     mut commands: Commands,
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -355,16 +355,23 @@ fn add_new_clients(
     clients_pos: Res<ClientPositions>,
 ) {
     // Get existing set of active players
+    // Remove any players that aren't in the active client list
     let mut player_set = HashSet::<Uuid>::new();
-    for (_, player) in query.iter() {
-        player_set.insert(player.client.uuid);
+    for (entity, player) in query.iter() {
+        if clients_pos.map.contains_key(&player.client.uuid) {
+            player_set.insert(player.client.uuid);
+        } else {
+            commands.entity(entity).despawn_recursive();
+        }
     }
 
+    // Determine new clients by checking against keys in ClientPositions
     let new_clients = clients_pos
         .map
         .iter()
         .filter(|(&uuid, _)| !player_set.contains(&uuid));
 
+    // Add new clients
     for (uuid, position) in new_clients {
         commands
             .spawn((
