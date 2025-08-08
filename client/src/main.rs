@@ -410,7 +410,7 @@ fn sync_clients_to_players(
                     transform: Transform {
                         translation: Vec3::new(0., 0., 2.),
                         rotation: Quat::IDENTITY,
-                        scale: Vec3::splat(0.01),
+                        scale: Vec3::new(0.01, 0.01, 10.),
                     },
                     ..default()
                 });
