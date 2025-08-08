@@ -1,12 +1,16 @@
 //! A simplified implementation of the classic game "Breakout".
 
-use std::ops::{Add, Mul};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::{Add, Mul},
+};
 use wasm_bindgen::prelude::*;
 
 use bevy::{
     prelude::*,
     sprite::MaterialMesh2dBundle,
     text::{BreakLineOn, Text2dBounds},
+    utils::Uuid,
     window::{WindowResized, WindowResolution},
 };
 use web_sys;
@@ -31,7 +35,7 @@ const UNITS_BETWEEN_LINES: f32 = 100.0;
 extern "C" {
     fn sendPosition(x: f32, y: f32);
     fn createWebSocket();
-    fn readMessages() -> Vec<String>;
+    fn readLatestMessage() -> Option<String>;
 }
 
 fn main() {
@@ -51,6 +55,7 @@ fn main() {
             ..default()
         }))
         .insert_resource(ClearColor(BACKGROUND_COLOR))
+        .insert_resource(ClientPositions { map: default() })
         .add_event::<CollisionEvent>()
         .add_systems(Startup, (setup, setup_map))
         // Add our gameplay simulation systems to the fixed timestep schedule
@@ -61,7 +66,9 @@ fn main() {
                 apply_velocity,
                 move_player,
                 send_player_position,
-                read_web_socket,
+                read_client_messages,
+                add_new_clients,
+                update_existing_player_positions,
             )
                 // `chain`ing systems together runs them in order
                 .chain(),
@@ -103,6 +110,11 @@ struct Brick;
 
 #[derive(Resource)]
 struct CollisionSound(Handle<AudioSource>);
+
+#[derive(Resource)]
+struct ClientPositions {
+    map: HashMap<Uuid, [f32; 2]>,
+}
 
 fn console_log(message: &String) {
     web_sys::console::log_1(&message.into());
@@ -309,40 +321,57 @@ fn send_player_position(query: Query<&Transform, With<Player>>) {
     sendPosition(x, y);
 }
 
-fn read_web_socket(
-    mut commands: Commands,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    query: Query<(Entity, &OtherPlayer)>,
-) {
-    let messages = readMessages();
-
-    // Each message is a list of clients, so just take the last message
-    let Some(msg) = messages.last() else {
+fn read_client_messages(mut positions: ResMut<ClientPositions>) {
+    let Some(msg) = readLatestMessage() else {
         return;
     };
-
-    // TODO: This sucks and should be refactored
-    // We should instead only remove entities that have actually disconnected,
-    // and should just update the ones that are still present
-
-    // Despawn all players
-    for (entity, _) in query.iter() {
-        commands.entity(entity).despawn_recursive();
-    }
-
-    // Create an entity for each other player found
     let Some(clients) = serde_json::from_str::<Vec<GameClient>>(&msg).ok() else {
         return;
     };
 
     for client in clients.iter() {
+        positions.map.insert(client.uuid, client.position);
+    }
+}
+
+fn update_existing_player_positions(
+    mut query: Query<(&mut Transform, &OtherPlayer)>,
+    positions: Res<ClientPositions>,
+) {
+    for (mut transform, player) in query.iter_mut() {
+        if let Some(pos) = positions.map.get(&player.client.uuid) {
+            transform.translation.x = pos[0];
+            transform.translation.y = pos[1];
+        }
+    }
+}
+
+// TODO: Remove old clients
+fn add_new_clients(
+    mut commands: Commands,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    query: Query<(Entity, &OtherPlayer)>,
+    clients_pos: Res<ClientPositions>,
+) {
+    // Get existing set of active players
+    let mut player_set = HashSet::<Uuid>::new();
+    for (_, player) in query.iter() {
+        player_set.insert(player.client.uuid);
+    }
+
+    let new_clients = clients_pos
+        .map
+        .iter()
+        .filter(|(&uuid, _)| !player_set.contains(&uuid));
+
+    for (uuid, position) in new_clients {
         commands
             .spawn((
                 MaterialMesh2dBundle {
                     // Position player forward, in-front of the background
                     transform: Transform {
-                        translation: Vec3::new(client.position[0], client.position[1], 1.),
+                        translation: Vec3::new(position[0], position[1], 1.),
                         scale: PLAYER_SIZE,
                         ..default()
                     },
@@ -352,17 +381,17 @@ fn read_web_socket(
                 },
                 Collider,
                 OtherPlayer {
-                    client: client.clone(),
+                    client: GameClient {
+                        uuid: uuid.clone(),
+                        position: position.clone(),
+                    },
                 },
             ))
             // Add text to display other player name/id
             .with_children(|parent| {
                 parent.spawn(Text2dBundle {
                     text: Text {
-                        sections: vec![TextSection::new(
-                            &client.uuid.to_string(),
-                            TextStyle::default(),
-                        )],
+                        sections: vec![TextSection::new(uuid.to_string(), TextStyle::default())],
                         alignment: TextAlignment::Center,
                         linebreak_behavior: BreakLineOn::AnyCharacter,
                     },

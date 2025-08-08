@@ -2,21 +2,17 @@
 let websocket;
 
 // Array of messages as strings
-let bufferedMessages = [];
+let latestMessage;
 
 export function createWebSocket() {
     websocket = new WebSocket("ws://localhost:3000");
     websocket.onmessage = (event) => {
-        // Push string to array
-        bufferedMessages.push(event.data);
+        latestMessage = event.data
     };
 }
 
-export function readMessages() {
-    const messages = bufferedMessages;
-    bufferedMessages = [];
-
-    return messages;
+export function readLatestMessage() {
+    return latestMessage;
 }
 
 export function sendPosition(x, y) {
