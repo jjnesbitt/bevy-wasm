@@ -75,12 +75,7 @@ fn main() {
         )
         .add_systems(
             Update,
-            (
-                read_gamepads,
-                handle_zoom,
-                on_resize_system,
-                bevy::window::close_on_esc,
-            ),
+            (handle_zoom, on_resize_system, bevy::window::close_on_esc),
         )
         .run();
 }
@@ -196,73 +191,58 @@ fn on_resize_system(
     }
 }
 
-// TODO: COMBINE READ_GAMEPADS and MOVE_PLAYER
-fn read_gamepads(
+fn move_player(
     gamepads: Res<Gamepads>,
     gamepad_axis: Res<Axis<GamepadAxis>>,
-    mut query: Query<&mut Transform, With<Player>>,
-    mut cameras: Query<&mut Transform, (With<Camera>, Without<Player>)>,
-    time: Res<Time>,
-) {
-    let mut translation = Vec3::new(1.0, 1.0, 0.0);
-    let Some(gamepad) = gamepads.iter().next() else {
-        return;
-    };
-
-    let x_axis = GamepadAxis {
-        gamepad,
-        axis_type: GamepadAxisType::LeftStickX,
-    };
-    let y_axis = GamepadAxis {
-        gamepad,
-        axis_type: GamepadAxisType::LeftStickY,
-    };
-
-    if let (Some(x), Some(y)) = (gamepad_axis.get(x_axis), gamepad_axis.get(y_axis)) {
-        translation = translation
-            .mul(Vec3::new(x, y, 0.0))
-            .mul(PLAYER_SPEED * time.delta_seconds());
-    }
-
-    // Set new location
-    let mut player_transform = query.single_mut();
-    player_transform.translation = player_transform.translation.add(translation);
-
-    // Set camera center to match player's
-    for mut transform in &mut cameras {
-        transform.translation.x = player_transform.translation.x;
-        transform.translation.y = player_transform.translation.y;
-    }
-}
-
-fn move_player(
     keyboard_input: Res<Input<KeyCode>>,
     mut query: Query<&mut Transform, With<Player>>,
     mut cameras: Query<&mut Transform, (With<Camera>, Without<Player>)>,
     time: Res<Time>,
 ) {
+    let mut x = 0.0;
+    let mut y = 0.0;
+
+    // Handle gamepad input
+    if let Some(gamepad) = gamepads.iter().next() {
+        let x_axis = GamepadAxis {
+            gamepad,
+            axis_type: GamepadAxisType::LeftStickX,
+        };
+        let y_axis = GamepadAxis {
+            gamepad,
+            axis_type: GamepadAxisType::LeftStickY,
+        };
+
+        if let (Some(gamepad_x), Some(gamepad_y)) =
+            (gamepad_axis.get(x_axis), gamepad_axis.get(y_axis))
+        {
+            (x, y) = (gamepad_x, gamepad_y);
+        }
+    }
+
+    // Handle keyboard input
+    {
+        if keyboard_input.pressed(KeyCode::S) {
+            y = -1.0;
+        }
+        if keyboard_input.pressed(KeyCode::W) {
+            y = 1.0;
+        }
+        if keyboard_input.pressed(KeyCode::A) {
+            x = -1.0;
+        }
+        if keyboard_input.pressed(KeyCode::D) {
+            x = 1.0;
+        }
+    }
+
+    // Now move player
     let mut player_transform = query.single_mut();
-    let mut x_direction = 0.0;
-    let mut y_direction = 0.0;
-
-    if keyboard_input.pressed(KeyCode::S) {
-        y_direction = -1.0;
-    }
-    if keyboard_input.pressed(KeyCode::W) {
-        y_direction = 1.0;
-    }
-    if keyboard_input.pressed(KeyCode::A) {
-        x_direction = -1.0;
-    }
-    if keyboard_input.pressed(KeyCode::D) {
-        x_direction = 1.0;
-    }
-
-    // Calculate the new horizontal player position based on player input
-    player_transform.translation.x =
-        player_transform.translation.x + x_direction * PLAYER_SPEED * time.delta_seconds();
-    player_transform.translation.y =
-        player_transform.translation.y + y_direction * PLAYER_SPEED * time.delta_seconds();
+    player_transform.translation = player_transform.translation.add(
+        Vec3::new(1.0, 1.0, 0.0)
+            .mul(Vec3::new(x, y, 0.0))
+            .mul(PLAYER_SPEED * time.delta_seconds()),
+    );
 
     // Set camera center to match player's
     for mut transform in &mut cameras {
