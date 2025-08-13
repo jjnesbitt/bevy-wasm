@@ -69,6 +69,7 @@ fn main() {
                 read_client_messages,
                 sync_clients_to_players,
                 update_existing_player_positions,
+                collide_player,
             )
                 // `chain`ing systems together runs them in order
                 .chain(),
@@ -80,8 +81,10 @@ fn main() {
         .run();
 }
 
-#[derive(Component)]
-struct Player;
+#[derive(Component, Default)]
+struct Player {
+    colliding: bool,
+}
 
 #[derive(Component)]
 struct OtherPlayer {
@@ -138,7 +141,7 @@ fn setup(
             material: materials.add(ColorMaterial::from(PLAYER_COLOR)),
             ..default()
         },
-        Player,
+        Player::default(),
         Collider,
     ));
 }
@@ -188,6 +191,31 @@ fn on_resize_system(
     for e in resize_reader.read() {
         console_log(&format!("{:.2}, {:.2}", e.width, e.height));
         window.resolution.set(e.width, e.height);
+    }
+}
+
+fn collide_player(
+    other_players_query: Query<&Transform, (With<Collider>, With<OtherPlayer>, Without<Player>)>,
+    mut player_query: Query<&mut Transform, (With<Collider>, With<Player>, Without<OtherPlayer>)>,
+) {
+    let mut player_transform = player_query.single_mut();
+    for other_player_transform in other_players_query.iter() {
+        let dist_to_other_player = other_player_transform
+            .translation
+            .distance(player_transform.translation);
+
+        // Assumes player is round
+        if dist_to_other_player >= PLAYER_SIZE.x {
+            continue;
+        }
+
+        // Place player at the edge
+        let vector = player_transform.translation.xy() - other_player_transform.translation.xy();
+        let scale_factor = PLAYER_SIZE.x / vector.length();
+        let vector_addition = vector * scale_factor;
+        player_transform.translation = other_player_transform
+            .translation
+            .add(vector_addition.extend(0.));
     }
 }
 
