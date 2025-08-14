@@ -69,7 +69,7 @@ fn main() {
                 read_client_messages,
                 sync_clients_to_players,
                 update_existing_player_positions,
-                collide_player,
+                // collide_player,
             )
                 // `chain`ing systems together runs them in order
                 .chain(),
@@ -223,8 +223,14 @@ fn move_player(
     gamepads: Res<Gamepads>,
     gamepad_axis: Res<Axis<GamepadAxis>>,
     keyboard_input: Res<Input<KeyCode>>,
-    mut query: Query<&mut Transform, With<Player>>,
-    mut cameras: Query<&mut Transform, (With<Camera>, Without<Player>)>,
+    // mut query: Query<&mut Transform, With<Player>>,
+    // other_players_query: Query<&Transform, (With<OtherPlayer>, Without<Player>)>,
+    // mut cameras: Query<&mut Transform, (With<Camera>, Without<Player>)>,
+    mut query_set: ParamSet<(
+        Query<&mut Transform, (With<Player>, Without<OtherPlayer>)>,
+        Query<&Transform, (With<OtherPlayer>, Without<Player>)>,
+        Query<&mut Transform, (With<Camera>, Without<Player>)>,
+    )>,
     time: Res<Time>,
 ) {
     let mut x = 0.0;
@@ -264,18 +270,33 @@ fn move_player(
         }
     }
 
+    let new_translation = {
+        query_set.p0().single().translation.add(
+            Vec3::new(1.0, 1.0, 0.0)
+                .mul(Vec3::new(x, y, 0.0))
+                .mul(PLAYER_SPEED * time.delta_seconds()),
+        )
+    };
+
+    // Check for collision, assume players are round
+    for other_player in query_set.p1().iter() {
+        if new_translation.distance(other_player.translation) < PLAYER_SIZE.x {
+            return;
+        }
+    }
+
     // Now move player
-    let mut player_transform = query.single_mut();
-    player_transform.translation = player_transform.translation.add(
-        Vec3::new(1.0, 1.0, 0.0)
-            .mul(Vec3::new(x, y, 0.0))
-            .mul(PLAYER_SPEED * time.delta_seconds()),
-    );
+    let mut player_query = query_set.p0();
+    let mut player_transform = player_query.single_mut();
+    player_transform.translation = new_translation;
 
     // Set camera center to match player's
-    for mut transform in &mut cameras {
-        transform.translation.x = player_transform.translation.x;
-        transform.translation.y = player_transform.translation.y;
+    // let mut cameras = query_set.p2();
+    // let mut cameras = query_set.p2();
+    // for mut transform in cameras.iter_mut() {
+    for mut camera_transform in query_set.p2().iter_mut() {
+        camera_transform.translation.x = new_translation.x;
+        camera_transform.translation.y = new_translation.y;
     }
 }
 
