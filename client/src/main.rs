@@ -4,7 +4,6 @@ use std::{
     collections::{HashMap, HashSet},
     ops::{Add, Mul},
 };
-use wasm_bindgen::prelude::*;
 
 use bevy::{
     prelude::*,
@@ -31,19 +30,7 @@ const MAP_SIZE: u32 = 5000;
 const GRID_WIDTH: f32 = 1.0;
 const UNITS_BETWEEN_LINES: f32 = 100.0;
 
-#[wasm_bindgen(module = "/js/foo.js")]
-extern "C" {
-    fn sendPosition(x: f32, y: f32);
-    fn createWebSocket();
-    fn readLatestMessage() -> Option<String>;
-}
-
 fn main() {
-    // Create web socket before starting app
-    // The code to create a websocket in rust is extremely verbose and complicated. So I opted
-    // to create the websocket in JS and expose the method to send data
-    createWebSocket();
-
     // Start app
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -65,8 +52,6 @@ fn main() {
             (
                 apply_velocity,
                 move_player,
-                send_player_position,
-                read_client_messages,
                 sync_clients_to_players,
                 update_existing_player_positions,
                 // collide_player,
@@ -340,27 +325,6 @@ fn handle_zoom(
 
         // Set new value
         projection.scale = log_scale.exp();
-    }
-}
-
-fn send_player_position(query: Query<&Transform, With<Player>>) {
-    let player_transform = query.single();
-    let Vec2 { x, y } = player_transform.translation.xy();
-
-    sendPosition(x, y);
-}
-
-fn read_client_messages(mut positions: ResMut<ClientPositions>) {
-    let Some(msg) = readLatestMessage() else {
-        return;
-    };
-    let Some(clients) = serde_json::from_str::<Vec<GameClient>>(&msg).ok() else {
-        return;
-    };
-
-    positions.map.clear();
-    for client in clients.iter() {
-        positions.map.insert(client.uuid, client.position);
     }
 }
 
