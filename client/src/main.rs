@@ -12,6 +12,8 @@ use bevy::{
     utils::Uuid,
     window::{WindowResized, WindowResolution},
 };
+
+#[cfg(target_arch = "wasm32")]
 use web_sys;
 
 // The shared library between server and client
@@ -99,8 +101,13 @@ struct ClientPositions {
     map: HashMap<Uuid, [f32; 2]>,
 }
 
+#[cfg(target_arch = "wasm32")]
 fn console_log(message: &String) {
     web_sys::console::log_1(&message.into());
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn console_log(message: &String) {
+    println!("{}", &message);
 }
 
 // Add the game's entities to our world
