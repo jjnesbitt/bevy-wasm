@@ -7,11 +7,9 @@ use std::{
 
 use bevy::{
     prelude::*,
-    sprite::MaterialMesh2dBundle,
-    text::{BreakLineOn, Text2dBounds},
-    utils::Uuid,
     window::{WindowResized, WindowResolution},
 };
+use uuid::Uuid;
 
 #[cfg(target_arch = "wasm32")]
 use web_sys;
@@ -24,10 +22,10 @@ use shared::GameClient;
 const PLAYER_SIZE: Vec3 = Vec3::new(120.0, 120.0, 0.0);
 const GAP_BETWEEN_PLAYER_AND_FLOOR: f32 = 60.0;
 const PLAYER_SPEED: f32 = 500.0;
-const PLAYER_COLOR: Color = Color::rgb(0.3, 0.3, 0.7);
+const PLAYER_COLOR: Color = Color::srgb(0.3, 0.3, 0.7);
 
 // Map constants
-const BACKGROUND_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
+const BACKGROUND_COLOR: Color = Color::srgb(0.9, 0.9, 0.9);
 const MAP_SIZE: u32 = 5000;
 const GRID_WIDTH: f32 = 1.0;
 const UNITS_BETWEEN_LINES: f32 = 100.0;
@@ -61,10 +59,7 @@ fn main() {
                 // `chain`ing systems together runs them in order
                 .chain(),
         )
-        .add_systems(
-            Update,
-            (handle_zoom, on_resize_system, bevy::window::close_on_esc),
-        )
+        .add_systems(Update, (handle_zoom, on_resize_system))
         .run();
 }
 
@@ -117,22 +112,19 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     // Camera
-    commands.spawn(Camera2dBundle::default());
+    commands.spawn(Camera2d::default());
 
     // Player
     let player_y = -300.0 + GAP_BETWEEN_PLAYER_AND_FLOOR;
     commands.spawn((
-        MaterialMesh2dBundle {
-            transform: Transform {
-                // Position player forward, in-front of the background
-                translation: Vec3::new(0., player_y, 1.),
-                scale: PLAYER_SIZE,
-                ..default()
-            },
-            mesh: meshes.add(Mesh::from(shape::Circle::default())).into(),
-            material: materials.add(ColorMaterial::from(PLAYER_COLOR)),
+        Transform {
+            // Position player forward, in-front of the background
+            translation: Vec3::new(0., player_y, 1.),
+            scale: PLAYER_SIZE,
             ..default()
         },
+        Mesh2d(meshes.add(Mesh::from(Circle::default())).into()),
+        MeshMaterial2d(materials.add(ColorMaterial::from(PLAYER_COLOR))),
         Player::default(),
         Collider,
     ));
@@ -141,36 +133,32 @@ fn setup(
 fn setup_map(mut commands: Commands) {
     // Horizontal lines
     for i in 0..=(MAP_SIZE / UNITS_BETWEEN_LINES as u32) {
-        commands.spawn(SpriteBundle {
-            transform: Transform::from_translation(Vec3::new(
+        commands.spawn((
+            Sprite::from_color(
+                Color::srgb(0.27, 0.27, 0.27),
+                Vec2::new(MAP_SIZE as f32, GRID_WIDTH),
+            ),
+            Transform::from_translation(Vec3::new(
                 0.,
                 ((i as f32) * UNITS_BETWEEN_LINES) - MAP_SIZE as f32 / 2.,
                 0.,
             )),
-            sprite: Sprite {
-                color: Color::rgb(0.27, 0.27, 0.27),
-                custom_size: Some(Vec2::new(MAP_SIZE as f32, GRID_WIDTH)),
-                ..default()
-            },
-            ..default()
-        });
+        ));
     }
 
     // Vertical lines
     for i in 0..=(MAP_SIZE / UNITS_BETWEEN_LINES as u32) {
-        commands.spawn(SpriteBundle {
-            transform: Transform::from_translation(Vec3::new(
+        commands.spawn((
+            Sprite::from_color(
+                Color::srgb(0.27, 0.27, 0.27),
+                Vec2::new(GRID_WIDTH, MAP_SIZE as f32),
+            ),
+            Transform::from_translation(Vec3::new(
                 ((i as f32) * UNITS_BETWEEN_LINES) - MAP_SIZE as f32 / 2.,
                 0.,
                 0.,
             )),
-            sprite: Sprite {
-                color: Color::rgb(0.27, 0.27, 0.27),
-                custom_size: Some(Vec2::new(GRID_WIDTH, MAP_SIZE as f32)),
-                ..default()
-            },
-            ..default()
-        });
+        ));
     }
 }
 
@@ -179,7 +167,7 @@ fn on_resize_system(
     mut windows: Query<&mut Window>,
     mut resize_reader: EventReader<WindowResized>,
 ) {
-    let mut window = windows.single_mut();
+    let mut window = windows.single_mut().unwrap();
     for e in resize_reader.read() {
         console_log(&format!("{:.2}, {:.2}", e.width, e.height));
         window.resolution.set(e.width, e.height);
@@ -190,7 +178,7 @@ fn collide_player(
     other_players_query: Query<&Transform, (With<Collider>, With<OtherPlayer>, Without<Player>)>,
     mut player_query: Query<&mut Transform, (With<Collider>, With<Player>, Without<OtherPlayer>)>,
 ) {
-    let mut player_transform = player_query.single_mut();
+    let mut player_transform = player_query.single_mut().unwrap();
     for other_player_transform in other_players_query.iter() {
         let dist_to_other_player = other_player_transform
             .translation
@@ -212,12 +200,8 @@ fn collide_player(
 }
 
 fn move_player(
-    gamepads: Res<Gamepads>,
-    gamepad_axis: Res<Axis<GamepadAxis>>,
-    keyboard_input: Res<Input<KeyCode>>,
-    // mut query: Query<&mut Transform, With<Player>>,
-    // other_players_query: Query<&Transform, (With<OtherPlayer>, Without<Player>)>,
-    // mut cameras: Query<&mut Transform, (With<Camera>, Without<Player>)>,
+    gamepads: Query<&Gamepad>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
     mut query_set: ParamSet<(
         Query<&mut Transform, (With<Player>, Without<OtherPlayer>)>,
         Query<&Transform, (With<OtherPlayer>, Without<Player>)>,
@@ -230,43 +214,42 @@ fn move_player(
 
     // Handle gamepad input
     if let Some(gamepad) = gamepads.iter().next() {
-        let x_axis = GamepadAxis {
-            gamepad,
-            axis_type: GamepadAxisType::LeftStickX,
-        };
-        let y_axis = GamepadAxis {
-            gamepad,
-            axis_type: GamepadAxisType::LeftStickY,
-        };
+        let x_axis = gamepad.get(GamepadAxis::LeftStickX);
+        let y_axis = gamepad.get(GamepadAxis::LeftStickY);
 
-        if let (Some(gamepad_x), Some(gamepad_y)) =
-            (gamepad_axis.get(x_axis), gamepad_axis.get(y_axis))
-        {
-            (x, y) = (gamepad_x, gamepad_y);
+        if let (Some(xval), Some(yval)) = (x_axis, y_axis) {
+            console_log(&format!("--- (x, y) {xval}, {yval}"));
+            // (x, y) = (xval, yval);
+            if xval.abs() > 0.1 {
+                x = xval;
+            }
+            if yval.abs() > 0.1 {
+                y = yval;
+            }
         }
     }
 
     // Handle keyboard input
     {
-        if keyboard_input.pressed(KeyCode::S) {
+        if keyboard_input.pressed(KeyCode::KeyS) {
             y = -1.0;
         }
-        if keyboard_input.pressed(KeyCode::W) {
+        if keyboard_input.pressed(KeyCode::KeyW) {
             y = 1.0;
         }
-        if keyboard_input.pressed(KeyCode::A) {
+        if keyboard_input.pressed(KeyCode::KeyA) {
             x = -1.0;
         }
-        if keyboard_input.pressed(KeyCode::D) {
+        if keyboard_input.pressed(KeyCode::KeyD) {
             x = 1.0;
         }
     }
 
     let new_translation = {
-        query_set.p0().single().translation.add(
+        query_set.p0().single().unwrap().translation.add(
             Vec3::new(1.0, 1.0, 0.0)
                 .mul(Vec3::new(x, y, 0.0))
-                .mul(PLAYER_SPEED * time.delta_seconds()),
+                .mul(PLAYER_SPEED * time.delta_secs()),
         )
     };
 
@@ -279,7 +262,7 @@ fn move_player(
 
     // Now move player
     let mut player_query = query_set.p0();
-    let mut player_transform = player_query.single_mut();
+    let mut player_transform = player_query.single_mut().unwrap();
     player_transform.translation = new_translation;
 
     // Set camera center to match player's
@@ -293,45 +276,47 @@ fn move_player(
 }
 
 fn handle_zoom(
-    gamepads: Res<Gamepads>,
-    keyboard_input: Res<Input<KeyCode>>,
-    gamepad_input: Res<Input<GamepadButton>>,
-    mut proj_query: Query<&mut OrthographicProjection, With<Camera>>,
+    gamepads: Query<&Gamepad>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut proj_query: Query<&mut Projection, With<Camera>>,
     time: Res<Time>,
 ) {
     for mut projection in proj_query.iter_mut() {
         let scale_amt = 1.5;
-        let mut log_scale = projection.scale.ln();
+
+        let Some(ortho) = (match projection.as_mut() {
+            Projection::Orthographic(o) => Some(o),
+            _ => None,
+        }) else {
+            continue;
+        };
+        let mut log_scale = ortho.scale.ln();
 
         // Keyboard input
         if keyboard_input.pressed(KeyCode::PageUp) {
-            log_scale -= scale_amt * time.delta_seconds();
+            log_scale -= scale_amt * time.delta_secs();
         }
         if keyboard_input.pressed(KeyCode::PageDown) {
-            log_scale += scale_amt * time.delta_seconds();
+            log_scale += scale_amt * time.delta_secs();
         }
 
         // Gamepad input
         if let Some(gamepad) = gamepads.iter().next() {
-            let left_trigger = GamepadButton {
-                gamepad,
-                button_type: GamepadButtonType::LeftTrigger2,
-            };
-            if gamepad_input.pressed(left_trigger) {
-                log_scale += scale_amt * time.delta_seconds();
+            if let Some(left_trigger) = gamepad.get(GamepadButton::LeftTrigger2) {
+                if left_trigger.abs() > 0.01 {
+                    log_scale += left_trigger * scale_amt * time.delta_secs();
+                }
             }
 
-            let right_trigger = GamepadButton {
-                gamepad,
-                button_type: GamepadButtonType::RightTrigger2,
-            };
-            if gamepad_input.pressed(right_trigger) {
-                log_scale -= scale_amt * time.delta_seconds();
+            if let Some(right_trigger) = gamepad.get(GamepadButton::RightTrigger2) {
+                if right_trigger.abs() > 0.01 {
+                    log_scale -= right_trigger * scale_amt * time.delta_secs();
+                }
             }
         }
 
         // Set new value
-        projection.scale = log_scale.exp();
+        ortho.scale = log_scale.exp();
     }
 }
 
@@ -361,7 +346,7 @@ fn sync_clients_to_players(
         if clients_pos.map.contains_key(&player.client.uuid) {
             player_set.insert(player.client.uuid);
         } else {
-            commands.entity(entity).despawn_recursive();
+            commands.entity(entity).despawn();
         }
     }
 
@@ -375,17 +360,13 @@ fn sync_clients_to_players(
     for (uuid, position) in new_clients {
         commands
             .spawn((
-                MaterialMesh2dBundle {
-                    // Position player forward, in-front of the background
-                    transform: Transform {
-                        translation: Vec3::new(position[0], position[1], 1.),
-                        scale: PLAYER_SIZE,
-                        ..default()
-                    },
-                    mesh: meshes.add(Mesh::from(shape::Circle::default())).into(),
-                    material: materials.add(ColorMaterial::from(PLAYER_COLOR)),
+                Transform {
+                    translation: Vec3::new(position[0], position[1], 1.),
+                    scale: PLAYER_SIZE,
                     ..default()
                 },
+                Mesh2d(meshes.add(Circle::default())),
+                MeshMaterial2d(materials.add(ColorMaterial::from(PLAYER_COLOR))),
                 Collider,
                 OtherPlayer {
                     client: GameClient {
@@ -396,31 +377,38 @@ fn sync_clients_to_players(
             ))
             // Add text to display other player name/id
             .with_children(|parent| {
-                parent.spawn(Text2dBundle {
-                    text: Text {
-                        sections: vec![TextSection::new(uuid.to_string(), TextStyle::default())],
-                        alignment: TextAlignment::Center,
-                        linebreak_behavior: BreakLineOn::AnyCharacter,
-                    },
-                    text_2d_bounds: Text2dBounds {
-                        // Wrap text in the rectangle
-                        size: PLAYER_SIZE.xy(),
-                    },
-                    // ensure the text is drawn on top of the box
-                    transform: Transform {
-                        translation: Vec3::new(0., 0., 2.),
-                        rotation: Quat::IDENTITY,
-                        scale: Vec3::new(0.01, 0.01, 10.),
-                    },
-                    ..default()
-                });
+                // parent.spawn(Text2dBundle {
+                //     text: Text {
+                //         sections: vec![TextSection::new(uuid.to_string(), TextStyle::default())],
+                //         alignment: TextAlignment::Center,
+                //         linebreak_behavior: BreakLineOn::AnyCharacter,
+                //     },
+                //     text_2d_bounds: Text2dBounds {
+                //         // Wrap text in the rectangle
+                //         size: PLAYER_SIZE.xy(),
+                //     },
+                //     // ensure the text is drawn on top of the box
+                //     transform: Transform {
+                //         translation: Vec3::new(0., 0., 2.),
+                //         rotation: Quat::IDENTITY,
+                //         scale: Vec3::new(0.01, 0.01, 10.),
+                //     },
+                //     ..default()
+                // });
+                //
+                // parent.spawn((
+                //     Text2D {},
+                //     TextLayout {
+
+                //     }
+                // ));
             });
     }
 }
 
 fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>, time: Res<Time>) {
     for (mut transform, velocity) in &mut query {
-        transform.translation.x += velocity.x * time.delta_seconds();
-        transform.translation.y += velocity.y * time.delta_seconds();
+        transform.translation.x += velocity.x * time.delta_secs();
+        transform.translation.y += velocity.y * time.delta_secs();
     }
 }
