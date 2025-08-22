@@ -52,8 +52,8 @@ fn main() {
             (
                 apply_velocity,
                 move_player,
-                sync_clients_to_players,
-                update_existing_player_positions,
+                // sync_clients_to_players,
+                // update_existing_player_positions,
                 // collide_player,
             )
                 // `chain`ing systems together runs them in order
