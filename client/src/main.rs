@@ -169,7 +169,6 @@ fn on_resize_system(
 ) {
     let mut window = windows.single_mut().unwrap();
     for e in resize_reader.read() {
-        console_log(&format!("{:.2}, {:.2}", e.width, e.height));
         window.resolution.set(e.width, e.height);
     }
 }
@@ -218,8 +217,6 @@ fn move_player(
         let y_axis = gamepad.get(GamepadAxis::LeftStickY);
 
         if let (Some(xval), Some(yval)) = (x_axis, y_axis) {
-            console_log(&format!("--- (x, y) {xval}, {yval}"));
-            // (x, y) = (xval, yval);
             if xval.abs() > 0.1 {
                 x = xval;
             }
