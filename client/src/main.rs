@@ -6,7 +6,10 @@ use std::{
 };
 
 use bevy::{
+    asset::RenderAssetUsages,
+    color::palettes::basic::SILVER,
     prelude::*,
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
     window::{WindowResized, WindowResolution},
 };
 use uuid::Uuid;
@@ -30,36 +33,50 @@ const MAP_SIZE: u32 = 5000;
 const GRID_WIDTH: f32 = 1.0;
 const UNITS_BETWEEN_LINES: f32 = 100.0;
 
+#[cfg(target_arch = "wasm32")]
+fn get_window_plugin() -> WindowPlugin {
+    WindowPlugin {
+        primary_window: Some(Window {
+            canvas: Some("#game-canvas".into()),
+            resolution: WindowResolution::new(1920., 1080.),
+            ..default()
+        }),
+        ..default()
+    }
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn get_window_plugin() -> WindowPlugin {
+    WindowPlugin {
+        primary_window: Some(Window {
+            title: "Bevy Game".to_string(),
+            ..default()
+        }),
+        ..default()
+    }
+}
+
 fn main() {
     // Start app
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                canvas: Some("#game-canvas".into()),
-                resolution: WindowResolution::new(1920., 1080.),
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(DefaultPlugins.set(get_window_plugin()))
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .insert_resource(ClientPositions { map: default() })
-        .add_event::<CollisionEvent>()
         .add_systems(Startup, (setup, setup_map))
         // Add our gameplay simulation systems to the fixed timestep schedule
         // which runs at 64 Hz by default
-        .add_systems(
-            FixedUpdate,
-            (
-                apply_velocity,
-                move_player,
-                // sync_clients_to_players,
-                // update_existing_player_positions,
-                // collide_player,
-            )
-                // `chain`ing systems together runs them in order
-                .chain(),
-        )
-        .add_systems(Update, (handle_zoom, on_resize_system))
+        // .add_systems(
+        //     FixedUpdate,
+        //     (
+        //         apply_velocity,
+        //         move_player,
+        //         // sync_clients_to_players,
+        //         // update_existing_player_positions,
+        //         // collide_player,
+        //     )
+        //         // `chain`ing systems together runs them in order
+        //         .chain(),
+        // )
+        // .add_systems(Update, (handle_zoom, on_resize_system))
         .run();
 }
 
@@ -105,14 +122,63 @@ fn console_log(message: &String) {
     println!("{}", &message);
 }
 
+fn uv_debug_texture() -> Image {
+    const TEXTURE_SIZE: usize = 8;
+
+    let mut palette: [u8; 32] = [
+        255, 102, 159, 255, 255, 159, 102, 255, 236, 255, 102, 255, 121, 255, 102, 255, 102, 255,
+        198, 255, 102, 198, 255, 255, 121, 102, 255, 255, 236, 102, 255, 255,
+    ];
+
+    let mut texture_data = [0; TEXTURE_SIZE * TEXTURE_SIZE * 4];
+    for y in 0..TEXTURE_SIZE {
+        let offset = TEXTURE_SIZE * y * 4;
+        texture_data[offset..(offset + TEXTURE_SIZE * 4)].copy_from_slice(&palette);
+        palette.rotate_right(4);
+    }
+
+    Image::new_fill(
+        Extent3d {
+            width: TEXTURE_SIZE as u32,
+            height: TEXTURE_SIZE as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        &texture_data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+}
+
 // Add the game's entities to our world
 fn setup(
     mut commands: Commands,
-    mut materials: ResMut<Assets<ColorMaterial>>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    let debug_material = materials.add(StandardMaterial {
+        base_color_texture: Some(images.add(uv_debug_texture())),
+        ..default()
+    });
+    // Light
+    commands.spawn((
+        PointLight {
+            shadows_enabled: true,
+            intensity: 10_000_000.,
+            range: 100.0,
+            shadow_depth_bias: 0.2,
+            ..default()
+        },
+        Transform::from_xyz(8.0, 16.0, 8.0),
+    ));
+
     // Camera
-    commands.spawn(Camera2d::default());
+    // commands.spawn(Camera2d::default());
+    commands.spawn((
+        Camera3d::default(),
+        Transform::from_xyz(0.0, 7., 14.0).looking_at(Vec3::new(0., 1., 0.), Vec3::Y),
+    ));
 
     // Player
     let player_y = -300.0 + GAP_BETWEEN_PLAYER_AND_FLOOR;
@@ -123,43 +189,27 @@ fn setup(
             scale: PLAYER_SIZE,
             ..default()
         },
-        Mesh2d(meshes.add(Mesh::from(Circle::default())).into()),
-        MeshMaterial2d(materials.add(ColorMaterial::from(PLAYER_COLOR))),
+        Mesh3d(meshes.add(Sphere::default().mesh())),
+        MeshMaterial3d(debug_material.clone()),
         Player::default(),
         Collider,
     ));
 }
 
-fn setup_map(mut commands: Commands) {
-    // Horizontal lines
-    for i in 0..=(MAP_SIZE / UNITS_BETWEEN_LINES as u32) {
-        commands.spawn((
-            Sprite::from_color(
-                Color::srgb(0.27, 0.27, 0.27),
-                Vec2::new(MAP_SIZE as f32, GRID_WIDTH),
-            ),
-            Transform::from_translation(Vec3::new(
-                0.,
-                ((i as f32) * UNITS_BETWEEN_LINES) - MAP_SIZE as f32 / 2.,
-                0.,
-            )),
-        ));
-    }
-
-    // Vertical lines
-    for i in 0..=(MAP_SIZE / UNITS_BETWEEN_LINES as u32) {
-        commands.spawn((
-            Sprite::from_color(
-                Color::srgb(0.27, 0.27, 0.27),
-                Vec2::new(GRID_WIDTH, MAP_SIZE as f32),
-            ),
-            Transform::from_translation(Vec3::new(
-                ((i as f32) * UNITS_BETWEEN_LINES) - MAP_SIZE as f32 / 2.,
-                0.,
-                0.,
-            )),
-        ));
-    }
+fn setup_map(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    // commands.spawn((
+    //     Mesh3d(meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10))),
+    //     MeshMaterial3d(materials.add(Color::from(SILVER))),
+    // ));
+    commands.spawn((
+        Mesh3d(meshes.add(Circle::new((MAP_SIZE / 2) as f32))),
+        MeshMaterial3d(materials.add(Color::WHITE)),
+        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+    ));
 }
 
 /// This system shows how to respond to a window being resized.
