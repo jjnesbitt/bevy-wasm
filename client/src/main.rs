@@ -24,7 +24,7 @@ use shared::GameClient;
 // Using the default 2D camera they correspond 1:1 with screen pixels.
 const PLAYER_SIZE: Vec3 = Vec3::new(120.0, 120.0, 0.0);
 const GAP_BETWEEN_PLAYER_AND_FLOOR: f32 = 60.0;
-const PLAYER_SPEED: f32 = 500.0;
+const PLAYER_SPEED: f32 = 50.0;
 const PLAYER_COLOR: Color = Color::srgb(0.3, 0.3, 0.7);
 
 // Map constants
@@ -64,19 +64,19 @@ fn main() {
         .add_systems(Startup, (setup, setup_map))
         // Add our gameplay simulation systems to the fixed timestep schedule
         // which runs at 64 Hz by default
-        // .add_systems(
-        //     FixedUpdate,
-        //     (
-        //         apply_velocity,
-        //         move_player,
-        //         // sync_clients_to_players,
-        //         // update_existing_player_positions,
-        //         // collide_player,
-        //     )
-        //         // `chain`ing systems together runs them in order
-        //         .chain(),
-        // )
-        // .add_systems(Update, (handle_zoom, on_resize_system))
+        .add_systems(
+            FixedUpdate,
+            (
+                // apply_velocity,
+                move_player,
+                // sync_clients_to_players,
+                // update_existing_player_positions,
+                // collide_player,
+            )
+                // `chain`ing systems together runs them in order
+                .chain(),
+        )
+        .add_systems(Update, (handle_zoom, on_resize_system))
         .run();
 }
 
@@ -177,18 +177,21 @@ fn setup(
     // commands.spawn(Camera2d::default());
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 7., 14.0).looking_at(Vec3::new(0., 1., 0.), Vec3::Y),
+        Projection::from(OrthographicProjection::default_3d()),
+        // Transform::from_xyz(0.0, 7., 14.0).looking_at(Vec3::new(0., 1., 0.), Vec3::Y),
+        Transform::from_xyz(-4.5, 4.5, -4.5).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
     // Player
     let player_y = -300.0 + GAP_BETWEEN_PLAYER_AND_FLOOR;
     commands.spawn((
-        Transform {
-            // Position player forward, in-front of the background
-            translation: Vec3::new(0., player_y, 1.),
-            scale: PLAYER_SIZE,
-            ..default()
-        },
+        // Transform {
+        //     // Position player forward, in-front of the background
+        //     translation: Vec3::new(0., player_y, 1.),
+        //     scale: PLAYER_SIZE,
+        //     ..default()
+        // },
+        Transform::from_xyz(0.0, 0.5, 0.0),
         Mesh3d(meshes.add(Sphere::default().mesh())),
         MeshMaterial3d(debug_material.clone()),
         Player::default(),
@@ -201,15 +204,15 @@ fn setup_map(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // commands.spawn((
-    //     Mesh3d(meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10))),
-    //     MeshMaterial3d(materials.add(Color::from(SILVER))),
-    // ));
     commands.spawn((
-        Mesh3d(meshes.add(Circle::new((MAP_SIZE / 2) as f32))),
-        MeshMaterial3d(materials.add(Color::WHITE)),
-        Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10))),
+        MeshMaterial3d(materials.add(Color::from(SILVER))),
     ));
+    //     commands.spawn((
+    //         Mesh3d(meshes.add(Circle::new((MAP_SIZE / 2) as f32))),
+    //         MeshMaterial3d(materials.add(Color::WHITE)),
+    //         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+    //     ));
 }
 
 /// This system shows how to respond to a window being resized.
@@ -259,7 +262,7 @@ fn move_player(
     time: Res<Time>,
 ) {
     let mut x = 0.0;
-    let mut y = 0.0;
+    let mut z = 0.0;
 
     // Handle gamepad input
     if let Some(gamepad) = gamepads.iter().next() {
@@ -271,7 +274,7 @@ fn move_player(
                 x = xval;
             }
             if yval.abs() > 0.1 {
-                y = yval;
+                z = yval;
             }
         }
     }
@@ -279,10 +282,10 @@ fn move_player(
     // Handle keyboard input
     {
         if keyboard_input.pressed(KeyCode::KeyS) {
-            y = -1.0;
+            z = -1.0;
         }
         if keyboard_input.pressed(KeyCode::KeyW) {
-            y = 1.0;
+            z = 1.0;
         }
         if keyboard_input.pressed(KeyCode::KeyA) {
             x = -1.0;
@@ -294,18 +297,18 @@ fn move_player(
 
     let new_translation = {
         query_set.p0().single().unwrap().translation.add(
-            Vec3::new(1.0, 1.0, 0.0)
-                .mul(Vec3::new(x, y, 0.0))
+            Vec3::new(1.0, 0.0, 1.0)
+                .mul(Vec3::new(x, 0.0, z))
                 .mul(PLAYER_SPEED * time.delta_secs()),
         )
     };
 
     // Check for collision, assume players are round
-    for other_player in query_set.p1().iter() {
-        if new_translation.distance(other_player.translation) < PLAYER_SIZE.x {
-            return;
-        }
-    }
+    // for other_player in query_set.p1().iter() {
+    //     if new_translation.distance(other_player.translation) < PLAYER_SIZE.x {
+    //         return;
+    //     }
+    // }
 
     // Now move player
     let mut player_query = query_set.p0();
@@ -316,10 +319,10 @@ fn move_player(
     // let mut cameras = query_set.p2();
     // let mut cameras = query_set.p2();
     // for mut transform in cameras.iter_mut() {
-    for mut camera_transform in query_set.p2().iter_mut() {
-        camera_transform.translation.x = new_translation.x;
-        camera_transform.translation.y = new_translation.y;
-    }
+    // for mut camera_transform in query_set.p2().iter_mut() {
+    //     camera_transform.translation.x = new_translation.x;
+    //     camera_transform.translation.y = new_translation.y;
+    // }
 }
 
 fn handle_zoom(
@@ -340,9 +343,11 @@ fn handle_zoom(
         let mut log_scale = ortho.scale.ln();
 
         // Keyboard input
+        // Zoom in
         if keyboard_input.pressed(KeyCode::PageUp) {
             log_scale -= scale_amt * time.delta_secs();
         }
+        // Zoom out
         if keyboard_input.pressed(KeyCode::PageDown) {
             log_scale += scale_amt * time.delta_secs();
         }
