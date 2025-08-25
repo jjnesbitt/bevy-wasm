@@ -69,6 +69,7 @@ fn main() {
             (
                 // apply_velocity,
                 move_player,
+                rotate_camera,
                 // sync_clients_to_players,
                 // update_existing_player_positions,
                 // collide_player,
@@ -249,6 +250,56 @@ fn collide_player(
             .translation
             .add(vector_addition.extend(0.));
     }
+}
+
+fn rotate_camera(
+    mut cameras: Query<&mut Transform, (With<Camera>, Without<Player>)>,
+    player: Query<&Transform, (With<Player>, Without<Camera>)>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    gamepads: Query<&Gamepad>,
+) {
+    let mut pitch = 0.0;
+    let mut yaw = 0.0;
+    let player_pos = player.single().unwrap().translation;
+
+    if let Some(gamepad) = gamepads.iter().next() {
+        let x_axis = gamepad.get(GamepadAxis::RightStickX);
+        let y_axis = gamepad.get(GamepadAxis::RightStickY);
+
+        if let (Some(xval), Some(yval)) = (x_axis, y_axis) {
+            if xval.abs() > 0.1 {
+                yaw += xval;
+            }
+            if yval.abs() > 0.1 {
+                pitch += yval;
+            }
+        }
+    }
+
+    // Handle keyboard input
+    {
+        if keyboard_input.pressed(KeyCode::ArrowLeft) {
+            yaw -= 1.0;
+        }
+        if keyboard_input.pressed(KeyCode::ArrowRight) {
+            yaw += 1.0;
+        }
+        if keyboard_input.pressed(KeyCode::ArrowUp) {
+            pitch -= 1.0;
+        }
+        if keyboard_input.pressed(KeyCode::ArrowDown) {
+            pitch += 1.0;
+        }
+    }
+
+    // Scale down inputs
+    yaw *= 0.01;
+    pitch *= 0.01;
+
+    cameras
+        .single_mut()
+        .unwrap()
+        .rotate_around(player_pos, Quat::from_euler(EulerRot::YXZ, yaw, pitch, 0.0));
 }
 
 fn move_player(
