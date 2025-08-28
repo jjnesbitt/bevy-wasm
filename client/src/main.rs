@@ -184,16 +184,22 @@ fn setup(
     ));
 
     // Player
-    let player_y = -300.0 + GAP_BETWEEN_PLAYER_AND_FLOOR;
+    let player_y = GAP_BETWEEN_PLAYER_AND_FLOOR;
     commands.spawn((
         // Transform {
-        //     // Position player forward, in-front of the background
-        //     translation: Vec3::new(0., player_y, 1.),
+        //     translation: Vec3::new(0.0, player_y, 0.0),
         //     scale: PLAYER_SIZE,
         //     ..default()
         // },
-        Transform::from_xyz(0.0, 0.5, 0.0),
-        Mesh3d(meshes.add(Sphere::default().mesh())),
+        Transform::from_xyz(0.0, player_y, 0.0),
+        Mesh3d(
+            meshes.add(
+                Sphere {
+                    radius: PLAYER_SIZE.x / 2.0,
+                }
+                .mesh(),
+            ),
+        ),
         MeshMaterial3d(debug_material.clone()),
         Player::default(),
         Collider,
@@ -206,8 +212,16 @@ fn setup_map(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10))),
+        Mesh3d(
+            meshes.add(
+                Plane3d::default()
+                    .mesh()
+                    .size(MAP_SIZE as f32, MAP_SIZE as f32)
+                    .subdivisions(0),
+            ),
+        ),
         MeshMaterial3d(materials.add(Color::from(SILVER))),
+        Transform::from_xyz(-100.0, 0.0, -100.0),
     ));
     //     commands.spawn((
     //         Mesh3d(meshes.add(Circle::new((MAP_SIZE / 2) as f32))),
